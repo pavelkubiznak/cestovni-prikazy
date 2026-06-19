@@ -83,6 +83,13 @@ details.adv[open]>summary:before{content:"\25BE ";}
 .note.blue{background:var(--brand-tint);border-color:#d8def9;color:#2a3a6e;}
 .note .i{font-weight:700;flex-shrink:0;}
 .empty{text-align:center;color:var(--faint);padding:34px 16px;font-size:13.5px;}
+.gen-actions{display:flex;flex-direction:column;gap:6px;margin-left:14px;flex:0 0 auto;}
+.hist-trips{display:flex;flex-direction:column;gap:5px;margin-top:9px;}
+.hist-trip{display:flex;gap:10px;align-items:center;font-size:12.5px;color:var(--muted);flex-wrap:wrap;}
+.hist-trip .dt{min-width:96px;color:var(--faint);}
+.hist-trip b{color:var(--ink);font-weight:600;min-width:150px;}
+.hist-trip .km{color:var(--brand-d);font-weight:600;}
+.hist-card .badge.brand{font-size:13px;}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
 .chip2{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:5px 7px 5px 13px;font-size:12.5px;}
 .chip2 b{color:var(--brand-d);font-weight:600;}
@@ -178,6 +185,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
   <button id="tRid" onclick="tab('Rid')">Řidiči</button>
   <button id="tVyj" onclick="tab('Vyj')">Výjimky</button>
   <button id="tDor" onclick="tab('Dor')">Doručení</button>
+  <button id="tHist" onclick="tab('Hist')">Historie</button>
 </div>
 
 <section id="vGen">
@@ -186,6 +194,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
   <div class="card"><div class="grid" style="align-items:flex-end">
     <div class="fld"><label>Měsíc</label><input type="month" id="genMonth" class="w-md"></div>
     <div class="fld" style="flex:1"><span class="small muted" id="genSub"></span></div>
+    <div class="fld"><button class="btn ghost sm" type="button" onclick="saveAllToHist()">Uložit všechny do historie</button></div>
   </div></div>
   <div class="cards" id="genCards"></div>
   <div class="note blue" style="margin-top:14px"><span class="i">i</span>
@@ -231,6 +240,16 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
   </div></div>
   <div class="note blue"><span class="i">i</span><div>Veškeré nastavení i výjimky se ukládají do cloudu k tvému účtu, takže je máš stejné na notebooku i v mobilu. Přihlašuješ se e‑mailem a heslem.</div></div>
 </section>
+
+<section id="vHist" style="display:none">
+  <h2 class="sec">Historie příkazů</h2>
+  <p class="lead">Trvalý archiv uložených příkazů — <b>kdo, kam, kdy a za kolik</b> jel. Každý záznam je „zamčený“ snímek, který se nemění pozdějšími úpravami nastavení. Ukládá se ručně v záložce <b>Generovat</b> tlačítkem „Do historie“.</p>
+  <div class="card"><div class="grid" style="align-items:flex-end">
+    <div class="fld"><label>Filtr řidiče</label><select id="histFilter" class="w-xl" onchange="renderHist()"></select></div>
+    <div class="fld" style="flex:1"><span class="small muted" id="histSub"></span></div>
+  </div></div>
+  <div id="histList"></div>
+</section>
 </div>
 
 <div class="savebar">
@@ -251,7 +270,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
 const SAZBY={"2026": {"zakladni": 5.9, "natural95": 34.7, "natural98": 39.0, "nafta": 34.1}};
 
 /* ====== Default settings (NO personal data — drivers are loaded from the cloud) ====== */
-function defaultNast(){return {firma:"Sintera Czech s.r.o.", email_ucetni:"", ucel_cesty:"Pracovní jednání", prac_doba:"od 9:00 - 17:30", sazby_dle_roku:JSON.parse(JSON.stringify(SAZBY)), ridici:{}};}
+function defaultNast(){return {firma:"Sintera Czech s.r.o.", email_ucetni:"", ucel_cesty:"Pracovní jednání", prac_doba:"od 9:00 - 17:30", sazby_dle_roku:JSON.parse(JSON.stringify(SAZBY)), ridici:{}, historie:[]};}
 let NAST=defaultNast();
 let VYJ={};
 
@@ -331,7 +350,7 @@ function a4Html(firma,name,res,obdobi,ucel,pracDoba,zakladni){
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),3200);}
 function initials(n){return n.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();}
 function avc(n){return AV[strHash(n)%AV.length];}
-function tab(t){['Gen','Rid','Vyj','Dor'].forEach(x=>{document.getElementById('v'+x).style.display=(x===t?'':'none');document.getElementById('t'+x).classList.toggle('act',x===t);});}
+function tab(t){['Gen','Rid','Vyj','Dor','Hist'].forEach(x=>{document.getElementById('v'+x).style.display=(x===t?'':'none');document.getElementById('t'+x).classList.toggle('act',x===t);});}
 
 function ridCards(){const ent=Object.entries(NAST.ridici);
  if(!ent.length){document.getElementById('ridCards').innerHTML='<div class="empty">Zatím žádní řidiči. Přidej prvního tlačítkem výše, nebo naimportuj zálohu dole.</div>';return;}
@@ -395,7 +414,7 @@ function genCards(){const mk=curMonth();const box=document.getElementById('genCa
   h+=`<div class="gen-card"><div class="avatar" style="background:${avc(nm)}">${initials(nm)}</div>
     <div class="who"><div class="nm">${nm}</div><div class="meta">${res.trips.length} jízd${ov?' • výjimka':''}</div></div>
     <div class="nums"><div class="kc">${kc(res.celkem)} Kč</div><div class="meta">${res.celkem_km} km</div></div>
-    <button class="btn soft sm" style="margin-left:14px" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button></div>`;}
+    <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button><button class="btn ghost sm" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button></div></div>`;}
  box.innerHTML=h;}
 function preview(nm){nm=dec(nm);const mk=curMonth();const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
  const res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ);const obdobi=MESICE[m]+' '+y;
@@ -419,6 +438,55 @@ function chips(){let h='';for(const[mk,obj]of Object.entries(VYJ)){if(mk[0]==='_
   h+=`<div class="chip2"><b>${mk}</b> ${jm}: ${parts.join(', ')||'—'} <button onclick="delVyj('${mk}','${encodeURIComponent(jm)}')">×</button></div>`;}}
  document.getElementById('vyjChips').innerHTML=h||'<span class="small muted">Žádné výjimky.</span>';}
 function delVyj(mk,jm){jm=dec(jm);if(VYJ[mk]){delete VYJ[mk][jm];if(!Object.keys(VYJ[mk]).length)delete VYJ[mk];}chips();loadVyj();genCards();scheduleSave();}
+
+/* ====== Historie (ruční snímky příkazů) ====== */
+function pushHist(nm,mk,y,m,res){
+  const d=res.d;const leanD={bydliste:d.bydliste,auto:d.auto,spz:d.spz,palivo:d.palivo,vychozi_bod:d.vychozi_bod,navratovy_bod:d.navratovy_bod};
+  const snap={id:nm+'|'+mk, ridic:nm, mk:mk, obdobi:MESICE[m]+' '+y, vytvoreno:new Date().toISOString(),
+    firma:NAST.firma, ucel:NAST.ucel_cesty||'Pracovní jednání', prac:NAST.prac_doba||'', zakladni:SZ.zakladni,
+    res:{d:leanD,trips:res.trips,rate:res.rate,celkem:res.celkem,celkem_km:res.celkem_km,avg:res.avg,cena:res.cena}};
+  if(!Array.isArray(NAST.historie))NAST.historie=[];
+  const i=NAST.historie.findIndex(h=>h.id===snap.id);
+  if(i>=0)NAST.historie[i]=snap;else NAST.historie.push(snap);
+  return i<0;
+}
+function saveToHist(nm){nm=dec(nm);const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
+  if(!NAST.ridici[nm]){return;}const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
+  let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ);}catch(e){toast('Nelze uložit — doplň cíle/částky řidiče.');return;}
+  const isNew=pushHist(nm,mk,y,m,res);saveCloud(false);fillHistFilter();renderHist();
+  toast((isNew?'Uloženo do historie: ':'Aktualizováno v historii: ')+nm+'.');}
+function saveAllToHist(){const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
+  const names=Object.keys(NAST.ridici);if(!names.length){toast('Žádní řidiči.');return;}
+  const[y,m]=mk.split('-').map(Number);let n=0;
+  for(const nm of names){const ov=(VYJ[mk]||{})[nm]||null;let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ);}catch(e){continue;}pushHist(nm,mk,y,m,res);n++;}
+  saveCloud(false);fillHistFilter();renderHist();toast(n+' příkazů uloženo do historie ('+MESICE[m]+' '+y+').');}
+function printHist(id){id=dec(id);const h=(NAST.historie||[]).find(x=>x.id===id);if(!h)return;
+  document.getElementById('printRoot').innerHTML=a4Html(h.firma,h.ridic,h.res,h.obdobi,h.ucel,h.prac,h.zakladni);
+  setTimeout(()=>window.print(),60);}
+function delHist(id){id=dec(id);const h=(NAST.historie||[]).find(x=>x.id===id);if(!h)return;
+  if(!confirm('Smazat z historie: '+h.ridic+' — '+h.obdobi+'?'))return;
+  NAST.historie=(NAST.historie||[]).filter(x=>x.id!==id);saveCloud(false);fillHistFilter();renderHist();toast('Smazáno z historie.');}
+function fillHistFilter(){const sel=document.getElementById('histFilter');if(!sel)return;const cur=sel.value;
+  const names=[...new Set((NAST.historie||[]).map(h=>h.ridic))].sort();
+  sel.innerHTML='<option value="__all">Všichni řidiči</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
+  if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;}
+function renderHist(){const box=document.getElementById('histList');if(!box)return;
+  let list=(NAST.historie||[]).slice();
+  const sel=document.getElementById('histFilter');const fv=sel?sel.value:'__all';
+  if(fv&&fv!=='__all')list=list.filter(h=>h.ridic===fv);
+  list.sort((a,b)=>(b.mk||'').localeCompare(a.mk||'')||(a.ridic||'').localeCompare(b.ridic||''));
+  const sub=document.getElementById('histSub');if(sub){const tot=(NAST.historie||[]).length;sub.textContent=tot?(tot+' záznamů celkem'):'';}
+  if(!list.length){box.innerHTML='<div class="empty">Zatím nic v historii. V záložce <b>Generovat</b> ulož příkaz tlačítkem „Do historie“.</div>';return;}
+  box.innerHTML=list.map(h=>{
+    const dt=new Date(h.vytvoreno);const dts=isNaN(dt.getTime())?'':(dt.getDate()+'. '+(dt.getMonth()+1)+'. '+dt.getFullYear());
+    const trips=(h.res.trips||[]).map(t=>`<div class="hist-trip"><span class="dt">${t.datum}</span><b>${t.dest}</b><span class="km">${t.km} km</span></div>`).join('');
+    return `<div class="card hist-card"><div class="dh"><div class="avatar" style="background:${avc(h.ridic)}">${initials(h.ridic)}</div>
+      <div><div class="nm">${h.ridic}</div><div class="sub">${h.obdobi} • ${h.res.trips.length} jízd${dts?' • uloženo '+dts:''}</div></div>
+      <div class="badge brand">${kc(h.res.celkem)} Kč</div></div>
+      <details class="adv"><summary>Kam jel — ${h.res.celkem_km} km celkem</summary><div class="hist-trips">${trips}</div></details>
+      <div style="margin-top:10px;display:flex;gap:8px"><button class="btn soft sm" onclick="printHist('${encodeURIComponent(h.id)}')">Tisk / PDF</button>
+      <button class="btn danger sm" onclick="delHist('${encodeURIComponent(h.id)}')">Smazat</button></div></div>`;
+  }).join('');}
 
 /* ====== Cloud (Supabase) ====== */
 const TABLE='cestovni_prikazy_data';
@@ -483,7 +551,8 @@ async function loadCloud(uid){
 }
 function reRender(){
  document.getElementById('email').value=NAST.email_ucetni||'';
- ridCards();fillDrivers();loadVyj();genCards();chips();updChip();
+ if(!Array.isArray(NAST.historie))NAST.historie=[];
+ ridCards();fillDrivers();loadVyj();genCards();chips();updChip();fillHistFilter();renderHist();
 }
 function updChip(){const n=Object.keys(NAST.ridici).length;document.getElementById('chipInfo').textContent=n+' '+(n===1?'řidič':(n>=2&&n<=4?'řidiči':'řidičů'));}
 

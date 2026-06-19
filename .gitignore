@@ -1,0 +1,5 @@
+# Personal/company data — never published to the public repo.
+# This file is used only locally to seed the private cloud account.
+seed.local.json
+*.local.json
+.DS_Store

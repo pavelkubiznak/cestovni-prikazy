@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="cs"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#eef2f8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Cestovní příkazy SINTERA</title>
+<style>
+:root{
+ --bg:#eef1f6; --surface:#ffffff; --surface-2:#f6f8fb;
+ --ink:#14161a; --muted:#5b6470; --faint:#959ca6; --line:#e9ecf1;
+ --brand:#2f54eb; --brand-d:#1f3fbf; --brand-tint:#eef1fe;
+ --ok:#0c8a4a; --ok-tint:#e9f6ee; --warn:#946400; --warn-tint:#fbf3e2;
+ --danger:#cf3b3b; --danger-tint:#fbeaea;
+ --r-card:16px; --r-ctrl:10px;
+ --sh:0 1px 2px rgba(20,22,26,.04),0 4px 14px rgba(20,22,26,.05);
+ --sh-lg:0 12px 34px rgba(20,22,26,.14);
+ --f:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;}
+body{font-family:var(--f);background:linear-gradient(180deg,#eef2f8 0%,#eceff5 240px,#eef1f6 100%);background-attachment:fixed;color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+.appbar{background:rgba(255,255,255,.78);backdrop-filter:saturate(1.4) blur(14px);color:var(--ink);padding:14px 24px;display:flex;align-items:center;gap:13px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;}
+.brand-dot{width:34px;height:34px;border-radius:11px;background:linear-gradient(150deg,#4f6dff,#2f54eb 60%,#1f3fbf);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff;box-shadow:0 4px 12px rgba(47,84,235,.32),inset 0 1px 0 rgba(255,255,255,.3);flex-shrink:0;}
+.appbar h1{font-size:15px;margin:0;font-weight:650;letter-spacing:-.01em;}
+.appbar p{margin:2px 0 0;font-size:12px;color:var(--faint);}
+.appbar .sp{flex:1;}
+.appbar .chip{font-size:12px;background:var(--surface-2);border:1px solid var(--line);padding:5px 11px;border-radius:999px;color:var(--muted);font-weight:550;white-space:nowrap;}
+.appbar .userchip{font-size:12px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.appbar .logout{border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:12px;font-weight:550;padding:5px 11px;border-radius:999px;cursor:pointer;font-family:var(--f);}
+.appbar .logout:hover{background:var(--surface-2);color:var(--ink);}
+.wrap{max-width:1040px;margin:0 auto;padding:28px 16px 130px;}
+.tabs{display:inline-flex;gap:2px;background:rgba(255,255,255,.7);padding:4px;border-radius:13px;margin:4px 0 24px;border:1px solid var(--line);box-shadow:var(--sh);flex-wrap:wrap;}
+.tabs button{border:0;background:transparent;color:var(--muted);font-weight:550;font-size:13px;padding:8px 16px;border-radius:9px;cursor:pointer;font-family:var(--f);transition:color .14s,background .14s;}
+.tabs button:hover{color:var(--ink);}
+.tabs button.act{background:var(--surface);color:var(--brand-d);box-shadow:0 1px 2px rgba(20,22,26,.06),0 2px 8px rgba(47,84,235,.1);}
+.lead{color:var(--muted);font-size:13.5px;margin:-2px 0 18px;max-width:70ch;line-height:1.55;}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh);padding:20px;margin-bottom:14px;}
+.cards{display:flex;flex-wrap:wrap;gap:16px;}
+.cards .card{flex:1 1 460px;margin-bottom:0;}
+.dh{display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+.avatar{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-weight:650;color:#fff;font-size:14px;flex-shrink:0;letter-spacing:.01em;box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 2px 6px rgba(20,22,26,.12);}
+.dh .nm{font-weight:650;font-size:15px;line-height:1.15;letter-spacing:-.01em;}
+.dh .sub{font-size:12.5px;color:var(--faint);margin-top:2px;}
+.badge{margin-left:auto;background:var(--ok-tint);color:var(--ok);font-weight:600;font-size:12px;padding:5px 11px;border-radius:999px;white-space:nowrap;border:1px solid rgba(12,138,74,.16);}
+.badge.brand{background:var(--brand-tint);color:var(--brand-d);}
+.grid{display:flex;flex-wrap:wrap;gap:10px 14px;}
+.fld{display:flex;flex-direction:column;gap:4px;}
+.fld label{font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.01em;}
+.fld input,.fld select,.fld textarea{font-family:var(--f);font-size:13.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-ctrl);padding:8px 11px;transition:border-color .12s,box-shadow .12s;}
+.fld input:hover,.fld select:hover,.fld textarea:hover{border-color:#d6d9de;}
+.fld input:focus,.fld select:focus,.fld textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-tint);}
+.fld .hint{font-size:11px;color:var(--faint);}
+.w-xs{width:78px;} .w-sm{width:104px;} .w-md{width:150px;} .w-lg{width:220px;} .w-xl{width:300px;} .w-full{width:100%;}
+.row-sep{height:1px;background:var(--line);margin:14px 0;border:0;}
+details.adv{margin-top:6px;} details.adv>summary{cursor:pointer;font-size:12.5px;color:var(--brand-d);font-weight:600;list-style:none;}
+details.adv>summary::-webkit-details-marker{display:none;}
+details.adv>summary:before{content:"\25B8 ";}
+details.adv[open]>summary:before{content:"\25BE ";}
+.btn{font-family:var(--f);border:1px solid transparent;border-radius:var(--r-ctrl);padding:9px 15px;font-weight:600;font-size:13.5px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background .12s,border-color .12s,color .12s;}
+.btn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--brand-tint);}
+.btn.primary{background:linear-gradient(180deg,#3a5ef0,#2f54eb);color:#fff;box-shadow:0 2px 8px rgba(47,84,235,.28),inset 0 1px 0 rgba(255,255,255,.18);}
+.btn.primary:hover{background:linear-gradient(180deg,#2f54eb,#1f3fbf);}
+.btn.ghost{background:var(--surface);color:var(--ink);border-color:var(--line);}
+.btn.ghost:hover{background:var(--surface-2);border-color:#d6d9de;}
+.btn.soft{background:var(--brand-tint);color:var(--brand-d);}
+.btn.soft:hover{background:#e3e8fd;}
+.btn.danger{background:var(--danger-tint);color:var(--danger);}
+.btn.danger:hover{background:#f7dede;}
+.btn.sm{padding:6px 11px;font-size:12.5px;}
+.savebar{position:fixed;left:0;right:0;bottom:0;background:rgba(255,255,255,.85);backdrop-filter:saturate(1.1) blur(10px);border-top:1px solid var(--line);padding:12px 20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;z-index:20;}
+.savebar .info{font-size:12.5px;color:var(--faint);margin-left:auto;display:flex;align-items:center;gap:7px;}
+.savebar .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);}
+.savebar .dot.ok{background:var(--ok);} .savebar .dot.busy{background:var(--warn);} .savebar .dot.err{background:var(--danger);}
+.gen-card{display:flex;align-items:center;gap:14px;flex:1 1 460px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh);padding:15px 17px;transition:transform .14s,box-shadow .14s,border-color .14s;}
+.gen-card:hover{transform:translateY(-2px);border-color:#dfe3ea;box-shadow:0 1px 2px rgba(20,22,26,.04),0 10px 24px rgba(20,22,26,.09);}
+.gen-card .who{flex:1 1 auto;min-width:0;}
+.gen-card .nums{margin-left:auto;text-align:right;padding-left:10px;}
+.gen-card .kc{font-weight:700;font-size:16px;letter-spacing:-.01em;}
+.gen-card .meta{font-size:12px;color:var(--faint);}
+.gen-card .btn{flex:0 0 auto;}
+.note{display:flex;gap:10px;background:var(--warn-tint);border:1px solid #f0e2bf;border-radius:11px;padding:12px 14px;font-size:12.8px;color:#6b4e09;line-height:1.5;}
+.note.blue{background:var(--brand-tint);border-color:#d8def9;color:#2a3a6e;}
+.note .i{font-weight:700;flex-shrink:0;}
+.empty{text-align:center;color:var(--faint);padding:34px 16px;font-size:13.5px;}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+.chip2{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:5px 7px 5px 13px;font-size:12.5px;}
+.chip2 b{color:var(--brand-d);font-weight:600;}
+.chip2 button{border:0;background:#e6e8ec;border-radius:999px;width:20px;height:20px;cursor:pointer;color:var(--muted);font-weight:600;line-height:1;transition:background .12s;}
+.chip2 button:hover{background:#d9dce1;}
+.dov-row{display:flex;align-items:center;gap:8px;margin:5px 0;flex-wrap:wrap;}
+.toast{position:fixed;left:50%;bottom:74px;transform:translateX(-50%);background:#10261a;color:#eafff1;padding:11px 16px;border-radius:10px;font-size:13px;box-shadow:var(--sh-lg);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:60;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
+.muted{color:var(--muted);} .small{font-size:12.5px;}
+
+/* ===== Auth gate ===== */
+.auth-gate{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(180deg,#eef2f8,#e7ebf3);}
+.auth-card{background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:var(--sh-lg);padding:30px 28px;width:100%;max-width:380px;text-align:center;}
+.auth-card .brand-dot{width:48px;height:48px;border-radius:14px;font-size:20px;margin:0 auto 14px;}
+.auth-card h2{margin:0 0 2px;font-size:20px;font-weight:680;letter-spacing:-.02em;}
+.auth-sub{color:var(--faint);font-size:13px;margin:0 0 20px;}
+.auth-card .fld{text-align:left;margin-bottom:12px;}
+.auth-card .fld input{width:100%;padding:11px 13px;font-size:14.5px;}
+.auth-btn{width:100%;justify-content:center;padding:12px;font-size:14.5px;margin-top:4px;}
+.auth-toggle{margin-top:16px;font-size:13px;color:var(--muted);}
+.auth-toggle a{color:var(--brand-d);font-weight:600;text-decoration:none;cursor:pointer;}
+.auth-toggle a:hover{text-decoration:underline;}
+.auth-msg{font-size:12.8px;border-radius:10px;padding:10px 12px;margin-bottom:14px;display:none;text-align:left;line-height:1.45;}
+.auth-msg.err{display:block;background:var(--danger-tint);color:var(--danger);border:1px solid rgba(207,59,59,.2);}
+.auth-msg.ok{display:block;background:var(--ok-tint);color:var(--ok);border:1px solid rgba(12,138,74,.2);}
+.auth-msg.info{display:block;background:var(--brand-tint);color:var(--brand-d);border:1px solid #d8def9;}
+
+@media (max-width:560px){
+ .appbar{padding:12px 14px;gap:9px;}
+ .appbar .titles p{display:none}
+ .appbar .userchip{display:none}
+ .wrap{padding:20px 12px 150px;}
+ .cards .card,.gen-card{flex-basis:100%;}
+ .savebar{padding:10px 12px;}
+ .savebar .btn{flex:1 1 auto;justify-content:center;}
+ .savebar .info{flex-basis:100%;margin-left:0;justify-content:center;order:-1;margin-bottom:2px;}
+}
+
+@media print{body *{visibility:hidden!important;}#printRoot,#printRoot *{visibility:visible!important;}
+#printRoot{position:absolute;left:0;top:0;width:100%;}@page{size:A4 portrait;margin:12mm 11mm;}}
+
+.a4{font-family:"Liberation Sans","DejaVu Sans",Arial,sans-serif;font-size:9.2pt;color:#000;background:#fff;}
+.a4 .title{font-family:"Liberation Serif","DejaVu Serif",serif;font-weight:bold;font-size:19pt;letter-spacing:6px;text-align:center;}
+.a4 .firma{font-weight:bold;font-size:9.5pt;}
+.a4 .hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;}
+.a4 .field{display:flex;align-items:flex-end;margin:5px 0;}
+.a4 .field .lab{font-weight:bold;white-space:nowrap;margin-right:8px;}
+.a4 .field .val{flex:1;border-bottom:1px solid #000;padding:0 4px 1px;min-height:15px;}
+.a4 .field .val.big{font-size:12pt;font-weight:bold;}
+.a4 table{border-collapse:collapse;width:100%;}
+.a4 .gridt td,.a4 .gridt th{border:1px solid #000;padding:3px 4px;}
+.a4 .gridt th{font-weight:bold;text-align:center;background:#f1f1f1;font-size:8.6pt;}
+.a4 .l{text-align:left;}.a4 .c{text-align:center;}.a4 .r{text-align:right;}
+.a4 .sec{font-weight:bold;margin:9px 0 3px;}
+.a4 .sign{display:flex;justify-content:space-between;margin-top:24px;font-size:8.4pt;text-align:center;}
+.a4 .sign div{width:32%;border-top:1px solid #000;padding-top:3px;}
+.a4 .small{font-size:8.4pt;}
+.a4 .vy th,.a4 .vy td{border:1px solid #000;padding:2px 3px;font-size:7.6pt;}
+.a4 .vy th{background:#f1f1f1;font-weight:bold;text-align:center;line-height:1.05;}
+.a4 .totline{display:flex;justify-content:flex-end;gap:18px;margin-top:6px;font-size:9pt;}
+.a4 .totline b{font-size:10.5pt;}
+.a4 .note2{font-size:8.2pt;color:#333;margin-top:4px;}
+.a4 .page2{page-break-before:always;}
+</style></head><body>
+
+<!-- ===== Login / signup gate ===== -->
+<div class="auth-gate" id="authGate" style="display:none">
+  <div class="auth-card">
+    <div class="brand-dot">S</div>
+    <h2>Cestovní příkazy</h2>
+    <p class="auth-sub">SINTERA Czech s.r.o.</p>
+    <div class="auth-msg" id="authMsg"></div>
+    <div class="fld"><label>E‑mail</label><input type="email" id="authEmail" autocomplete="username" placeholder="vas@email.cz"></div>
+    <div class="fld"><label>Heslo</label><input type="password" id="authPass" autocomplete="current-password" placeholder="••••••••"></div>
+    <button class="btn primary auth-btn" id="authSubmit" onclick="doAuth()">Přihlásit se</button>
+    <div class="auth-toggle"><span id="authToggleText">Nemáte ještě účet?</span> <a id="authToggle" onclick="toggleMode()">Vytvořit účet</a></div>
+  </div>
+</div>
+
+<!-- ===== App ===== -->
+<div id="appMain" style="display:none">
+<div class="appbar"><div class="brand-dot">S</div>
+<div class="titles"><h1>Cestovní příkazy</h1><p>SINTERA Czech s.r.o. — generování a evidence</p></div>
+<div class="sp"></div>
+<div class="chip" id="chipInfo">0 řidičů</div>
+<span class="userchip" id="userChip"></span>
+<button class="logout" onclick="doLogout()">Odhlásit</button></div>
+
+<div class="wrap">
+<div class="tabs" role="tablist">
+  <button id="tGen" class="act" onclick="tab('Gen')">Generovat</button>
+  <button id="tRid" onclick="tab('Rid')">Řidiči</button>
+  <button id="tVyj" onclick="tab('Vyj')">Výjimky</button>
+  <button id="tDor" onclick="tab('Dor')">Doručení</button>
+</div>
+
+<section id="vGen">
+  <h2 class="sec">Generovat cestovní příkazy</h2>
+  <p class="lead">Vyber měsíc a zobraz náhled. Tlačítkem <b>Náhled &amp; tisk</b> otevřeš hotový list k vytištění nebo uložení do PDF (v dialogu tisku zvol „Uložit jako PDF“).</p>
+  <div class="card"><div class="grid" style="align-items:flex-end">
+    <div class="fld"><label>Měsíc</label><input type="month" id="genMonth" class="w-md"></div>
+    <div class="fld" style="flex:1"><span class="small muted" id="genSub"></span></div>
+  </div></div>
+  <div class="cards" id="genCards"></div>
+  <div class="note blue" style="margin-top:14px"><span class="i">i</span>
+   <div>Náhled vychází ze stálého nastavení řidičů a případné jednorázové výjimky pro daný měsíc. Vytištěné/uložené PDF pak přepošli účetní (e‑mail je v záložce <b>Doručení</b>).</div></div>
+</section>
+
+<section id="vRid" style="display:none">
+  <h2 class="sec">Řidiči — stálé nastavení</h2>
+  <p class="lead">Auto, palivo, spotřeba, výchozí a návratový bod, počet jízd a cílová částka. Sazba Kč/km se dopočítá automaticky podle paliva a spotřeby (vyhláška pro daný rok).</p>
+  <div style="margin-bottom:14px"><button class="btn soft sm" type="button" onclick="addRidic()">+ přidat řidiče</button></div>
+  <div id="ridCards"></div>
+</section>
+
+<section id="vVyj" style="display:none">
+  <h2 class="sec">Jednorázová výjimka pro měsíc</h2>
+  <p class="lead">Platí jen pro zvolený měsíc, pak se vše vrátí ke stálému nastavení. Vyplň jen to, co se mění.</p>
+  <div class="card">
+    <div class="grid">
+      <div class="fld"><label>Měsíc</label><input type="month" id="vMonth" class="w-md"></div>
+      <div class="fld"><label>Řidič</label><select id="vDriver" class="w-xl"></select></div>
+    </div><hr class="row-sep">
+    <div class="grid">
+      <div class="fld"><label>Počet jízd</label><input type="number" id="vPocet" class="w-xs" min="1" max="6" placeholder="—"></div>
+      <div class="fld"><label>Částka od (Kč)</label><input type="number" id="vOd" class="w-md" placeholder="—"></div>
+      <div class="fld"><label>Částka do (Kč)</label><input type="number" id="vDo" class="w-md" placeholder="—"></div>
+    </div>
+    <div class="fld" style="margin-top:10px"><label>Dovolená / nepřítomnost (v tyto dny řidič nejede)</label>
+      <div id="dovWrap"></div>
+      <div><button class="btn soft sm" type="button" onclick="addDov()">+ přidat rozsah</button></div>
+    </div><hr class="row-sep">
+    <button class="btn primary" type="button" onclick="saveVyj()">Uložit výjimku</button>
+    <button class="btn danger" type="button" onclick="clearVyj()">Zrušit pro tento měsíc</button>
+    <div class="chips" id="vyjChips"></div>
+  </div>
+</section>
+
+<section id="vDor" style="display:none">
+  <h2 class="sec">Doručení účetní</h2>
+  <p class="lead">E‑mail účetní, kam posíláš hotové cestovní příkazy. Uloží se spolu s ostatním nastavením do tvého účtu.</p>
+  <div class="card"><div class="grid">
+    <div class="fld w-xl"><label>E‑mail účetní</label><input type="email" id="email" class="w-full" placeholder="ucetni@firma.cz">
+      <span class="hint">Použije se jako poznámka — odeslání e‑mailu probíhá z tvého e‑mailového klienta s přiloženým PDF.</span></div>
+  </div></div>
+  <div class="note blue"><span class="i">i</span><div>Veškeré nastavení i výjimky se ukládají do cloudu k tvému účtu, takže je máš stejné na notebooku i v mobilu. Přihlašuješ se e‑mailem a heslem.</div></div>
+</section>
+</div>
+
+<div class="savebar">
+  <button class="btn primary" onclick="saveCloud(true)">Uložit do cloudu</button>
+  <button class="btn ghost" onclick="exportBackup()">Export zálohy</button>
+  <button class="btn ghost" onclick="importBackup()">Import zálohy…</button>
+  <span class="info" id="fsInfo"><span class="dot" id="syncDot"></span><span id="syncText">—</span></span>
+</div>
+</div><!-- /appMain -->
+
+<div id="printRoot"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+/* ====== Rates (vyhláška) — not personal data, shipped with the app ====== */
+const SAZBY={"2026": {"zakladni": 5.9, "natural95": 34.7, "natural98": 39.0, "nafta": 34.1}};
+
+/* ====== Default settings (NO personal data — drivers are loaded from the cloud) ====== */
+function defaultNast(){return {firma:"Sintera Czech s.r.o.", email_ucetni:"", ucel_cesty:"Pracovní jednání", prac_doba:"od 9:00 - 17:30", sazby_dle_roku:JSON.parse(JSON.stringify(SAZBY)), ridici:{}};}
+let NAST=defaultNast();
+let VYJ={};
+
+const ROK=+Object.keys(SAZBY)[0]; const SZ=SAZBY[ROK];
+const AV=["#2f54eb","#0c8a4a","#b9770a","#7c3aed","#0891b2","#be185d"];
+
+// ===ENGINE START===
+const MESICE=["","leden","únor","březen","duben","květen","červen","červenec","srpen","září","říjen","listopad","prosinec"];
+const PALIVO_NAZEV={natural95:"Natural 95",natural98:"Natural 98",nafta:"motorová nafta"};
+const VYHLASKA={2026:"č. 573/2025 Sb."};
+function strHash(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function shuffle(arr,rng){for(let i=arr.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
+function easter(y){const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;return new Date(y,mo-1,da);}
+function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function holidaySet(y){const s=new Set([`${y}-01-01`,`${y}-05-01`,`${y}-05-08`,`${y}-07-05`,`${y}-07-06`,`${y}-09-28`,`${y}-10-28`,`${y}-11-17`,`${y}-12-24`,`${y}-12-25`,`${y}-12-26`]);const e=easter(y);const gp=new Date(e);gp.setDate(e.getDate()-2);const em=new Date(e);em.setDate(e.getDate()+1);s.add(iso(gp));s.add(iso(em));return s;}
+function vacSet(ranges){const s=new Set();(ranges||[]).forEach(r=>{let a=new Date(r[0]),b=new Date(r[1]);for(let d=new Date(a);d<=b;d.setDate(d.getDate()+1))s.add(iso(d));});return s;}
+function workdays(y,m,vac){const hol=holidaySet(y);const out=[];const d=new Date(y,m-1,1);while(d.getMonth()===m-1){const w=d.getDay();const k=iso(d);if(w!==0&&w!==6&&!hol.has(k)&&!vac.has(k))out.push(new Date(d));d.setDate(d.getDate()+1);}return out;}
+function pickDates(y,m,n,vac,rng){const dny=workdays(y,m,vac);if(dny.length<=n)return dny;const out=[];for(let i=0;i<n;i++){const lo=Math.floor(i*dny.length/n),hi=Math.floor((i+1)*dny.length/n);let usek=dny.slice(lo,hi);if(!usek.length)usek=[dny[lo]];out.push(usek[Math.floor(rng()*usek.length)]);}return out.sort((a,b)=>a-b);}
+function avgSpotreba(d){return (d.spotreba.mesto+d.spotreba.mimo+d.spotreba.kombi)/3;}
+function rateOf(d,sazby){return sazby.zakladni+(avgSpotreba(d)/100)*sazby[d.palivo||"natural95"];}
+function pickDest(cile,n,lo,hi,rng){const items=Object.entries(cile);if(n>items.length)n=items.length;let best=null;for(let t=0;t<8000;t++){const arr=shuffle(items.slice(),rng).slice(0,n);const s=arr.reduce((a,x)=>a+x[1],0);if(s>=lo&&s<=hi)return arr;const dd=Math.abs(s-(lo+hi)/2);if(!best||dd<best.d)best={d:dd,arr:arr};}return best.arr;}
+function timesFor(km,speed,rng){const oh=[8,8,8.5,9,9][Math.floor(rng()*5)];const jizda=Math.max(20,Math.round(km/speed*60/5)*5);const jed=[60,75,90,90,105,120][Math.floor(rng()*6)];const o=Math.round(oh*60),pc=o+jizda,oz=pc+jed,pd=oz+jizda;const t=x=>{x=Math.min(x,23*60+55);return Math.floor(x/60)+":"+String(x%60).padStart(2,"0");};return[t(o),t(pc),t(oz),t(pd)];}
+function genForDriver(name,base,y,m,override,sazby){
+  const d=Object.assign({},base,override||{});
+  const rate=rateOf(d,sazby);
+  const pocet=+d.pocet_jizd;
+  const lo=Math.round(d.castka_od/(2*rate)),hi=Math.floor(d.castka_do/(2*rate));
+  const rng=mulberry32(strHash(name+"|"+y+"|"+m));
+  const vyb=pickDest(d.cile,pocet,lo,hi,rng);
+  const vac=vacSet(d.dovolena);
+  let datumy=pickDates(y,m,vyb.length,vac,rng);
+  while(datumy.length<vyb.length){const last=datumy.length?new Date(datumy[datumy.length-1]):new Date(y,m-1,15);last.setDate(last.getDate()+1);datumy.push(last);}
+  const trips=vyb.map((it,i)=>{const km=it[1];const tt=timesFor(km,d.rychlost||80,rng);const dt=datumy[i];
+    return {datum:`${dt.getDate()}. ${dt.getMonth()+1}. ${dt.getFullYear()}`,dest:it[0],km:km,odj:tt[0],prij:tt[1],odj2:tt[2],prij2:tt[3]};});
+  const celkem_km=trips.reduce((a,t)=>a+t.km*2,0);
+  const celkem=Math.round(trips.reduce((a,t)=>a+Math.round(t.km*rate*100)/100*2,0)*100)/100;
+  return {d,rate,trips,celkem_km,celkem,avg:avgSpotreba(d),cena:sazby[d.palivo||"natural95"]};
+}
+function kc(x){return x.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g," ").replace(".",",");}
+// ===ENGINE END===
+
+function a4Html(firma,name,res,obdobi,ucel,pracDoba,zakladni){
+  const d=res.d,trips=res.trips,rate=res.rate;
+  const home=d.vychozi_bod,navrat=d.navratovy_bod;
+  let prikaz="";trips.forEach(t=>{prikaz+=`<tr><td class="l">${home}, ${t.datum}, ${t.odj}</td><td class="c">${ucel}</td><td class="l">${navrat}, ${t.datum}, ${t.prij2}</td></tr>`;});
+  const leg=(dat,sm,mi,ca,km,j)=>`<tr><td class="c">${dat}</td><td>${sm}</td><td>${mi}</td><td class="c">${ca}</td><td class="c">AUV</td><td class="r">${km||""}</td><td></td><td class="r">${j?kc(j):""}</td><td></td><td></td><td class="r">${j?kc(j):""}</td><td></td></tr>`;
+  let rows="";trips.forEach(t=>{const j=Math.round(t.km*rate*100)/100;rows+=leg(t.datum,"Odjezd",home,t.odj,t.km,j)+leg("","Příjezd",t.dest,t.prij,0,0)+leg("","Odjezd",t.dest,t.odj2,t.km,j)+leg("","Příjezd",navrat,t.prij2,0,0);});
+  const palivo=PALIVO_NAZEV[d.palivo||"natural95"], vyhl=VYHLASKA[obdobi.split(" ")[1]]||"";
+  return `<div class="a4">
+  <div class="hdr"><div class="firma">${firma}</div><div class="title">CESTOVNÍ&nbsp;PŘÍKAZ</div><div class="small" style="text-align:right">období:<br><b>${obdobi}</b></div></div>
+  <div class="field"><span class="lab">1. Příjmení, jméno, titul</span><span class="val big">${name}</span></div>
+  <div class="field"><span class="lab">2. Bydliště</span><span class="val">${d.bydliste||""}</span></div>
+  <div class="field"><span class="lab">Normální pracovní doba:</span><span class="val">${pracDoba}</span></div>
+  <table class="gridt" style="margin-top:8px"><thead><tr><th style="width:42%">Počátek cesty (místo, datum, hod.)</th><th style="width:24%">Účel cesty</th><th style="width:34%">Konec cesty (místo, datum, hod.)</th></tr></thead><tbody>${prikaz}</tbody></table>
+  <div class="sec">3. Zaměstnanec s pracovní cestou souhlasí</div>
+  <div class="field"><span class="lab">4. Určený dopravní prostředek (u vlastního vozidla druh, SPZ a přiložit kopii TP):</span><span class="val"><b>${d.spz||""}</b> &nbsp;–&nbsp; ${d.auto||""}</span></div>
+  <div class="field"><span class="lab">5. Povolená záloha Kč</span><span class="val"></span><span class="lab" style="margin-left:14px">vyplacena dne</span><span class="val"></span></div>
+  <div class="sign"><div>Podpis pokladníka</div><div>Datum a podpis pracovníka<br>oprávněného k povolení cesty</div><div></div></div>
+  <div class="sec" style="margin-top:16px;font-size:11pt">VYÚČTOVÁNÍ PRACOVNÍ CESTY</div>
+  <div class="field small"><span class="lab">6. Zpráva o výsledku pracovní cesty byla podána dne</span><span class="val"></span></div>
+  <div class="sec small">7. Výdajový – příjmový pokladní doklad č. ____________</div>
+  <div class="totline"><span>Účtovaná náhrada celkem:</span> <b>${kc(res.celkem)} Kč</b></div>
+  <div class="totline"><span>Doplatek – Přeplatek:</span> <b>${kc(res.celkem)} Kč</b></div>
+  <div class="sign"><div>Datum a podpis pracovníka,<br>který upravil vyúčtování</div><div>Datum a podpis příjemce<br>(průkaz totožnosti)</div><div>Schválil<br>(datum a podpis)</div></div>
+  <div class="page2"></div>
+  <div class="title" style="font-size:14pt;letter-spacing:3px;margin-bottom:10px">VYÚČTOVÁNÍ&nbsp;PRACOVNÍ&nbsp;CESTY</div>
+  <div class="field"><span class="lab">Zaměstnanec:</span><span class="val big" style="font-size:11pt">${name}</span><span class="lab" style="margin-left:14px">období:</span><span class="val">${obdobi}</span></div>
+  <table class="vy" style="margin-top:6px"><thead><tr><th style="width:8%">Datum</th><th style="width:7%">Odjezd /<br>příjezd</th><th style="width:20%">Místo</th><th style="width:6%">v hod.</th><th style="width:8%">Použitý<br>doprav.</th><th style="width:8%">Vzdál.<br>km</th><th style="width:9%">Poč./konec<br>výkonu</th><th style="width:9%">Jízdné Kč</th><th style="width:6%">Stravné</th><th style="width:7%">Nutné výd.</th><th style="width:9%">Celkem Kč</th><th style="width:6%">Uprav.</th></tr></thead><tbody>${rows}
+  <tr><td></td><td class="c"><b>Celkem km</b></td><td></td><td></td><td></td><td class="r"><b>${res.celkem_km}</b></td><td></td><td class="r"><b>${kc(res.celkem)}</b></td><td class="r">0</td><td class="r">0</td><td class="r"><b>${kc(res.celkem)}</b></td><td></td></tr></tbody></table>
+  <div class="totline" style="margin-top:8px"><span>Celkem k proplacení:</span> <b>${kc(res.celkem)} Kč</b></div>
+  <div class="note2">Vozidlo: ${d.auto} | SPZ ${d.spz} | náhrada ${kc(rate)} Kč/km (základní ${kc(zakladni)} Kč/km + spotřeba ${res.avg.toFixed(2)} l/100 km × ${kc(res.cena)} Kč/l, ${palivo}, vyhláška ${vyhl}).</div>
+  <div class="sign" style="margin-top:26px"><div></div><div>Datum a podpis pracovníka</div><div></div></div>
+  </div>`;
+}
+
+function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),3200);}
+function initials(n){return n.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();}
+function avc(n){return AV[strHash(n)%AV.length];}
+function tab(t){['Gen','Rid','Vyj','Dor'].forEach(x=>{document.getElementById('v'+x).style.display=(x===t?'':'none');document.getElementById('t'+x).classList.toggle('act',x===t);});}
+
+function ridCards(){const ent=Object.entries(NAST.ridici);
+ if(!ent.length){document.getElementById('ridCards').innerHTML='<div class="empty">Zatím žádní řidiči. Přidej prvního tlačítkem výše, nebo naimportuj zálohu dole.</div>';return;}
+ let h='';for(const[nm,d]of ent){const id=strHash(nm);
+ h+=`<div class="card"><div class="dh"><div class="avatar" style="background:${avc(nm)}">${initials(nm)}</div>
+   <div><div class="nm">${nm}</div><div class="sub">${d.vychozi_bod||'?'} → ${d.navratovy_bod||'?'}</div></div>
+   <div class="badge" id="rate_${id}"></div>
+   <button class="btn danger sm" style="margin-left:8px" type="button" onclick="delRidic('${encodeURIComponent(nm)}')">Smazat</button></div>
+   <div class="grid">
+     <div class="fld"><label>Jméno řidiče</label><input class="w-xl" value="${(nm||'').replace(/"/g,'&quot;')}" onchange="renameRidic('${encodeURIComponent(nm)}',this.value)"></div>
+     <div class="fld"><label>Bydliště</label><input class="w-xl" value="${(d.bydliste||'').replace(/"/g,'&quot;')}" oninput="setv('${encodeURIComponent(nm)}','bydliste',this.value)"></div>
+   </div>
+   <div class="grid" style="margin-top:8px">
+     <div class="fld"><label>Auto</label><input class="w-xl" value="${(d.auto||'').replace(/"/g,'&quot;')}" oninput="setv('${encodeURIComponent(nm)}','auto',this.value)"></div>
+     <div class="fld"><label>SPZ</label><input class="w-sm" value="${(d.spz||'').replace(/"/g,'&quot;')}" oninput="setv('${encodeURIComponent(nm)}','spz',this.value)"></div>
+     <div class="fld"><label>Palivo</label><select class="w-md" onchange="setv('${encodeURIComponent(nm)}','palivo',this.value);rate1('${encodeURIComponent(nm)}')">
+       ${Object.keys(PALIVO_NAZEV).map(p=>`<option value="${p}" ${d.palivo===p?'selected':''}>${PALIVO_NAZEV[p]}</option>`).join('')}</select></div>
+   </div>
+   <div class="grid" style="margin-top:8px">
+     <div class="fld"><label>Spotřeba město</label><input type="number" step="0.1" class="w-xs" value="${d.spotreba.mesto}" oninput="setsp('${encodeURIComponent(nm)}','mesto',this.value)"></div>
+     <div class="fld"><label>mimo město</label><input type="number" step="0.1" class="w-xs" value="${d.spotreba.mimo}" oninput="setsp('${encodeURIComponent(nm)}','mimo',this.value)"></div>
+     <div class="fld"><label>kombinace</label><input type="number" step="0.1" class="w-xs" value="${d.spotreba.kombi}" oninput="setsp('${encodeURIComponent(nm)}','kombi',this.value)"></div>
+   </div>
+   <div class="grid" style="margin-top:8px">
+     <div class="fld"><label>Výchozí bod</label><input class="w-lg" value="${(d.vychozi_bod||'').replace(/"/g,'&quot;')}" oninput="setv('${encodeURIComponent(nm)}','vychozi_bod',this.value)"></div>
+     <div class="fld"><label>Návratový bod</label><input class="w-lg" value="${(d.navratovy_bod||'').replace(/"/g,'&quot;')}" oninput="setv('${encodeURIComponent(nm)}','navratovy_bod',this.value)"></div>
+   </div>
+   <div class="grid" style="margin-top:8px">
+     <div class="fld"><label>Počet jízd</label><input type="number" class="w-xs" min="1" max="6" value="${d.pocet_jizd}" oninput="setv('${encodeURIComponent(nm)}','pocet_jizd',+this.value)"></div>
+     <div class="fld"><label>Částka od</label><input type="number" class="w-md" value="${d.castka_od}" oninput="setv('${encodeURIComponent(nm)}','castka_od',+this.value)"></div>
+     <div class="fld"><label>Částka do</label><input type="number" class="w-md" value="${d.castka_do}" oninput="setv('${encodeURIComponent(nm)}','castka_do',+this.value)"></div>
+     <div class="fld"><label>Rychlost km/h</label><input type="number" class="w-xs" value="${d.rychlost||80}" oninput="setv('${encodeURIComponent(nm)}','rychlost',+this.value)"></div>
+   </div>
+   <details class="adv"><summary>Cíle a vzdálenosti (km)</summary>
+     <p class="small muted" style="margin:6px 0">Jeden cíl na řádek: <b>Cíl;km</b> (jednosměrně z výchozího bodu).</p>
+     <textarea class="w-full" style="height:120px" oninput="setcile('${encodeURIComponent(nm)}',this.value)">${Object.entries(d.cile||{}).map(([k,v])=>k+';'+v).join('\n')}</textarea>
+   </details></div>`;}
+ document.getElementById('ridCards').innerHTML=h;
+ for(const nm of Object.keys(NAST.ridici))rate1(nm);}
+function rate1(nm){nm=dec(nm);const el=document.getElementById('rate_'+strHash(nm));if(el&&NAST.ridici[nm])el.textContent=rateOf(NAST.ridici[nm],SZ).toFixed(2).replace('.',',')+' Kč/km';}
+function dec(s){try{return decodeURIComponent(s);}catch(e){return s;}}
+function setv(nm,k,v){nm=dec(nm);NAST.ridici[nm][k]=v;scheduleSave();}
+function setsp(nm,k,v){nm=dec(nm);NAST.ridici[nm].spotreba[k]=parseFloat(v)||0;rate1(nm);scheduleSave();}
+function setcile(nm,txt){nm=dec(nm);const o={};txt.split(/\n/).forEach(l=>{const m=l.split(';');if(m[0]&&m[0].trim()&&m[1])o[m[0].trim()]=parseInt(m[1]);});NAST.ridici[nm].cile=o;scheduleSave();}
+function addRidic(){let i=1,nm='Nový řidič';while(NAST.ridici[nm]){i++;nm='Nový řidič '+i;}
+ NAST.ridici[nm]={bydliste:'',auto:'',spz:'',palivo:'natural95',spotreba:{mesto:7.5,mimo:5.5,kombi:6.5},vychozi_bod:'',navratovy_bod:'',pocet_jizd:3,castka_od:4000,castka_do:5000,rychlost:80,cile:{}};
+ ridCards();fillDrivers();updChip();scheduleSave();toast('Řidič přidán.');}
+function delRidic(nm){nm=dec(nm);if(!confirm('Smazat řidiče „'+nm+'“?'))return;delete NAST.ridici[nm];ridCards();fillDrivers();genCards();updChip();scheduleSave();toast('Řidič smazán.');}
+function renameRidic(oldNm,newNm){oldNm=dec(oldNm);newNm=(newNm||'').trim();if(!newNm||newNm===oldNm){return;}
+ if(NAST.ridici[newNm]){toast('Řidič s tímto jménem už existuje.');ridCards();return;}
+ const obj={};for(const k of Object.keys(NAST.ridici)){obj[k===oldNm?newNm:k]=NAST.ridici[k];}NAST.ridici=obj;
+ ridCards();fillDrivers();genCards();scheduleSave();}
+
+function curMonth(){return document.getElementById('genMonth').value;}
+function genCards(){const mk=curMonth();const box=document.getElementById('genCards');
+ if(!Object.keys(NAST.ridici).length){box.innerHTML='<div class="empty">Zatím žádní řidiči — přidej je v záložce <b>Řidiči</b>.</div>';return;}
+ if(!mk){box.innerHTML='';return;}const[y,m]=mk.split('-').map(Number);
+ document.getElementById('genSub').textContent='Náhled vychází ze stálého nastavení a případné výjimky pro tento měsíc.';
+ let h='';for(const[nm,d]of Object.entries(NAST.ridici)){const ov=(VYJ[mk]||{})[nm]||null;
+  let res;try{res=genForDriver(nm,d,y,m,ov,SZ);}catch(e){h+=`<div class="gen-card"><div class="who"><div class="nm">${nm}</div><div class="meta" style="color:var(--danger)">Chybí cíle/částky — doplň v Řidiči</div></div></div>`;continue;}
+  h+=`<div class="gen-card"><div class="avatar" style="background:${avc(nm)}">${initials(nm)}</div>
+    <div class="who"><div class="nm">${nm}</div><div class="meta">${res.trips.length} jízd${ov?' • výjimka':''}</div></div>
+    <div class="nums"><div class="kc">${kc(res.celkem)} Kč</div><div class="meta">${res.celkem_km} km</div></div>
+    <button class="btn soft sm" style="margin-left:14px" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button></div>`;}
+ box.innerHTML=h;}
+function preview(nm){nm=dec(nm);const mk=curMonth();const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
+ const res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ);const obdobi=MESICE[m]+' '+y;
+ document.getElementById('printRoot').innerHTML=a4Html(NAST.firma,nm,res,obdobi,NAST.ucel_cesty||"Pracovní jednání",NAST.prac_doba||"",SZ.zakladni);
+ setTimeout(()=>window.print(),60);}
+
+// výjimky
+function fillDrivers(){document.getElementById('vDriver').innerHTML=Object.keys(NAST.ridici).map(j=>`<option>${j}</option>`).join('');}
+function addDov(a='',b=''){const w=document.getElementById('dovWrap');const r=document.createElement('div');r.className='dov-row';
+ r.innerHTML=`<span class="small muted">od</span><input type="date" value="${a}"><span class="small muted">do</span><input type="date" value="${b}"><button class="btn danger sm" type="button" onclick="this.parentNode.remove()">×</button>`;w.appendChild(r);}
+function loadVyj(){const mk=document.getElementById('vMonth').value,jm=document.getElementById('vDriver').value;const v=((VYJ[mk]||{})[jm])||{};
+ document.getElementById('vPocet').value=v.pocet_jizd||'';document.getElementById('vOd').value=v.castka_od||'';document.getElementById('vDo').value=v.castka_do||'';
+ document.getElementById('dovWrap').innerHTML='';(v.dovolena||[]).forEach(r=>addDov(r[0],r[1]));chips();}
+function saveVyj(){const mk=document.getElementById('vMonth').value,jm=document.getElementById('vDriver').value;if(!mk){toast('Vyber měsíc.');return;}if(!jm){toast('Vyber řidiče.');return;}
+ const o={};const p=+document.getElementById('vPocet').value;if(p)o.pocet_jizd=p;const od=+document.getElementById('vOd').value;if(od)o.castka_od=od;const dd=+document.getElementById('vDo').value;if(dd)o.castka_do=dd;
+ const dov=[...document.querySelectorAll('#dovWrap .dov-row')].map(r=>{const i=r.querySelectorAll('input');return[i[0].value,i[1].value];}).filter(x=>x[0]&&x[1]);if(dov.length)o.dovolena=dov;
+ VYJ[mk]=VYJ[mk]||{};VYJ[mk][jm]=o;chips();genCards();scheduleSave();toast('Výjimka uložena.');}
+function clearVyj(){const mk=document.getElementById('vMonth').value,jm=document.getElementById('vDriver').value;if(VYJ[mk]){delete VYJ[mk][jm];if(!Object.keys(VYJ[mk]).length)delete VYJ[mk];}loadVyj();genCards();scheduleSave();toast('Výjimka zrušena.');}
+function chips(){let h='';for(const[mk,obj]of Object.entries(VYJ)){if(mk[0]==='_')continue;for(const[jm,v]of Object.entries(obj)){
+  const parts=[];if(v.pocet_jizd)parts.push(v.pocet_jizd+' jízd');if(v.castka_od||v.castka_do)parts.push((v.castka_od||'?')+'–'+(v.castka_do||'?')+' Kč');if(v.dovolena)parts.push('dovolená');
+  h+=`<div class="chip2"><b>${mk}</b> ${jm}: ${parts.join(', ')||'—'} <button onclick="delVyj('${mk}','${encodeURIComponent(jm)}')">×</button></div>`;}}
+ document.getElementById('vyjChips').innerHTML=h||'<span class="small muted">Žádné výjimky.</span>';}
+function delVyj(mk,jm){jm=dec(jm);if(VYJ[mk]){delete VYJ[mk][jm];if(!Object.keys(VYJ[mk]).length)delete VYJ[mk];}chips();loadVyj();genCards();scheduleSave();}
+
+/* ====== Cloud (Supabase) ====== */
+const TABLE='cestovni_prikazy_data';
+let sb=null, MODE='signin', CURRENT_UID=null, saveTimer=null;
+function setSync(state,text){const dot=document.getElementById('syncDot');const t=document.getElementById('syncText');
+ dot.className='dot'+(state?(' '+state):'');t.textContent=text;}
+function authMsg(t,cls){const e=document.getElementById('authMsg');e.textContent=t;e.className='auth-msg'+(cls?(' '+cls):'');}
+function toggleMode(){MODE=(MODE==='signin')?'signup':'signin';
+ document.getElementById('authSubmit').textContent=(MODE==='signin')?'Přihlásit se':'Vytvořit účet';
+ document.getElementById('authToggleText').textContent=(MODE==='signin')?'Nemáte ještě účet?':'Už máte účet?';
+ document.getElementById('authToggle').textContent=(MODE==='signin')?'Vytvořit účet':'Přihlásit se';
+ document.getElementById('authPass').setAttribute('autocomplete',MODE==='signin'?'current-password':'new-password');
+ authMsg('','');}
+function translateAuthErr(m){m=m||'';
+ if(/Invalid login/i.test(m))return'Špatný e‑mail nebo heslo.';
+ if(/already registered|already exists/i.test(m))return'Tento e‑mail už je zaregistrovaný. Přihlas se.';
+ if(/Password should be at least/i.test(m))return'Heslo musí mít alespoň 6 znaků.';
+ if(/Unable to validate email|invalid format|valid email/i.test(m))return'Zadej platný e‑mail.';
+ if(/Email not confirmed/i.test(m))return'E‑mail ještě není potvrzený — klikni na odkaz v e‑mailu.';
+ return m;}
+async function doAuth(){
+ if(!sb){authMsg('Aplikace se ještě načítá, zkus to za chvíli.','err');return;}
+ const email=document.getElementById('authEmail').value.trim();
+ const pass=document.getElementById('authPass').value;
+ if(!email||!pass){authMsg('Vyplň e‑mail i heslo.','err');return;}
+ const btn=document.getElementById('authSubmit');btn.disabled=true;
+ try{
+  if(MODE==='signup'){
+   const{data,error}=await sb.auth.signUp({email,password:pass});
+   if(error){authMsg(translateAuthErr(error.message),'err');return;}
+   if(data.session){/* auto-confirmed → onAuthStateChange handles it */}
+   else{authMsg('Účet vytvořen. Pokud dostaneš potvrzovací e‑mail, klikni na odkaz a pak se přihlas.','ok');MODE='signin';toggleMode();MODE='signin';}
+  }else{
+   const{error}=await sb.auth.signInWithPassword({email,password:pass});
+   if(error){authMsg(translateAuthErr(error.message),'err');return;}
+  }
+ }catch(e){authMsg('Chyba: '+(e.message||e),'err');}
+ finally{btn.disabled=false;}
+}
+async function doLogout(){try{await sb.auth.signOut();}catch(e){}CURRENT_UID=null;}
+
+function showGate(){document.getElementById('appMain').style.display='none';document.getElementById('authGate').style.display='flex';}
+async function showApp(user){
+ document.getElementById('authGate').style.display='none';
+ document.getElementById('appMain').style.display='';
+ document.getElementById('userChip').textContent=user.email||'';
+ document.getElementById('authPass').value='';
+ await loadCloud(user.id);
+}
+function applySession(session){if(session&&session.user)showApp(session.user);else showGate();}
+
+async function loadCloud(uid){
+ CURRENT_UID=uid;setSync('busy','Načítám…');
+ try{
+  const{data,error}=await sb.from(TABLE).select('nastaveni,vyjimky').eq('user_id',uid).maybeSingle();
+  if(error)throw error;
+  if(data&&data.nastaveni){NAST=Object.assign(defaultNast(),data.nastaveni);if(!NAST.ridici)NAST.ridici={};VYJ=data.vyjimky||{};}
+  else{NAST=defaultNast();VYJ={};}
+ }catch(e){console.error(e);setSync('err','Chyba načítání');toast('Nepodařilo se načíst data z cloudu.');}
+ reRender();
+ if(CURRENT_UID)setSync('ok','Načteno z cloudu');
+}
+function reRender(){
+ document.getElementById('email').value=NAST.email_ucetni||'';
+ ridCards();fillDrivers();loadVyj();genCards();chips();updChip();
+}
+function updChip(){const n=Object.keys(NAST.ridici).length;document.getElementById('chipInfo').textContent=n+' '+(n===1?'řidič':(n>=2&&n<=4?'řidiči':'řidičů'));}
+
+function scheduleSave(){if(!CURRENT_UID)return;setSync('busy','Ukládám…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveCloud(false),900);}
+async function saveCloud(manual){
+ if(!CURRENT_UID){if(manual)toast('Nejsi přihlášený.');return;}
+ clearTimeout(saveTimer);
+ NAST.email_ucetni=document.getElementById('email').value||NAST.email_ucetni;
+ setSync('busy','Ukládám…');
+ try{
+  const{error}=await sb.from(TABLE).upsert({user_id:CURRENT_UID,nastaveni:NAST,vyjimky:VYJ,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+  if(error)throw error;
+  setSync('ok','Uloženo ✓');if(manual)toast('Uloženo do cloudu.');
+ }catch(e){console.error(e);setSync('err','Chyba ukládání');toast('Chyba ukládání do cloudu.');}
+}
+
+/* ====== Backup export / import (.json) ====== */
+function exportBackup(){const obj={nastaveni:NAST,vyjimky:VYJ,_exported:new Date().toISOString()};
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));
+ a.download='cestovni-prikazy-zaloha.json';a.click();toast('Záloha stažena.');}
+function importBackup(){const inp=document.createElement('input');inp.type='file';inp.accept='application/json,.json';
+ inp.onchange=async()=>{const f=inp.files[0];if(!f)return;try{const o=JSON.parse(await f.text());
+  if(o.nastaveni){NAST=Object.assign(defaultNast(),o.nastaveni);}else if(o.ridici){NAST=Object.assign(defaultNast(),o);}
+  if(o.vyjimky){VYJ=o.vyjimky;}else if(!o.nastaveni&&!o.ridici){VYJ=o;}
+  if(!NAST.ridici)NAST.ridici={};reRender();saveCloud(true);toast('Záloha načtena a uložena do cloudu.');
+ }catch(e){toast('Soubor se nepodařilo načíst.');}};inp.click();}
+
+/* ====== Init ====== */
+function initMonths(){const now=new Date();const mk=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+ document.getElementById('genMonth').value=mk;document.getElementById('vMonth').value=mk;}
+function wireAutosave(){const main=document.getElementById('appMain');
+ main.addEventListener('input',e=>{if(e.target.closest('.savebar'))return;scheduleSave();});
+ document.getElementById('genMonth').addEventListener('change',genCards);
+ document.getElementById('vMonth').addEventListener('change',loadVyj);
+ document.getElementById('vDriver').addEventListener('change',loadVyj);
+ document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')doAuth();});
+ document.getElementById('authEmail').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authPass').focus();});}
+async function init(){
+ initMonths();wireAutosave();
+ if(!window.supabase||!window.__SB||!window.__SB.url||!window.__SB.anon){
+  document.getElementById('authGate').style.display='flex';
+  authMsg('Chybí konfigurace připojení (config.js). Kontaktuj správce aplikace.','err');
+  document.getElementById('authSubmit').disabled=true;return;}
+ sb=window.supabase.createClient(window.__SB.url,window.__SB.anon);
+ sb.auth.onAuthStateChange((_ev,session)=>applySession(session));
+ const{data}=await sb.auth.getSession();
+ applySession(data.session);
+}
+init();
+</script></body></html>

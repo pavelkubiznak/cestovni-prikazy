@@ -270,7 +270,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
 const SAZBY={"2026": {"zakladni": 5.9, "natural95": 34.7, "natural98": 39.0, "nafta": 34.1}};
 
 /* ====== Default settings (NO personal data — drivers are loaded from the cloud) ====== */
-function defaultNast(){return {firma:"Sintera Czech s.r.o.", email_ucetni:"", ucel_cesty:"Pracovní jednání", prac_doba:"od 9:00 - 17:30", sazby_dle_roku:JSON.parse(JSON.stringify(SAZBY)), ridici:{}, historie:[]};}
+function defaultNast(){return {firma:"Sintera Czech s.r.o.", email_ucetni:"", ucel_cesty:"Pracovní jednání", prac_doba:"od 9:00 - 17:30", sazby_dle_roku:JSON.parse(JSON.stringify(SAZBY)), ridici:{}};}
 let NAST=defaultNast();
 let VYJ={};
 
@@ -439,51 +439,59 @@ function chips(){let h='';for(const[mk,obj]of Object.entries(VYJ)){if(mk[0]==='_
  document.getElementById('vyjChips').innerHTML=h||'<span class="small muted">Žádné výjimky.</span>';}
 function delVyj(mk,jm){jm=dec(jm);if(VYJ[mk]){delete VYJ[mk][jm];if(!Object.keys(VYJ[mk]).length)delete VYJ[mk];}chips();loadVyj();genCards();scheduleSave();}
 
-/* ====== Historie (ruční snímky příkazů) ====== */
-function pushHist(nm,mk,y,m,res){
+/* ====== Historie (vlastní tabulka cp_historie — bez kolizí) ====== */
+function histSnap(nm,mk,y,m,res){
   const d=res.d;const leanD={bydliste:d.bydliste,auto:d.auto,spz:d.spz,palivo:d.palivo,vychozi_bod:d.vychozi_bod,navratovy_bod:d.navratovy_bod};
-  const snap={id:nm+'|'+mk, ridic:nm, mk:mk, obdobi:MESICE[m]+' '+y, vytvoreno:new Date().toISOString(),
-    firma:NAST.firma, ucel:NAST.ucel_cesty||'Pracovní jednání', prac:NAST.prac_doba||'', zakladni:SZ.zakladni,
-    res:{d:leanD,trips:res.trips,rate:res.rate,celkem:res.celkem,celkem_km:res.celkem_km,avg:res.avg,cena:res.cena}};
-  if(!Array.isArray(NAST.historie))NAST.historie=[];
-  const i=NAST.historie.findIndex(h=>h.id===snap.id);
-  if(i>=0)NAST.historie[i]=snap;else NAST.historie.push(snap);
-  return i<0;
+  return {id:nm+'|'+mk, ridic:nm, mk:mk, obdobi:MESICE[m]+' '+y, vytvoreno:new Date().toISOString(),
+    data:{firma:NAST.firma, ucel:NAST.ucel_cesty||'Pracovní jednání', prac:NAST.prac_doba||'', zakladni:SZ.zakladni,
+      res:{d:leanD,trips:res.trips,rate:res.rate,celkem:res.celkem,celkem_km:res.celkem_km,avg:res.avg,cena:res.cena}}};
 }
-function saveToHist(nm){nm=dec(nm);const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
-  if(!NAST.ridici[nm]){return;}const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
+function localUpsertHist(snap){const i=HIST.findIndex(h=>h.id===snap.id);if(i>=0)HIST[i]=snap;else HIST.push(snap);}
+async function dbUpsertHist(snaps){if(!CURRENT_UID)return false;
+  const{error}=await sb.from(HTABLE).upsert(snaps,{onConflict:'id'});
+  if(error){console.error(error);toast('Chyba ukládání historie.');return false;}return true;}
+async function loadHist(){if(!CURRENT_UID){HIST=[];return;}
+  const{data,error}=await sb.from(HTABLE).select('*');
+  if(error){console.error(error);return;}HIST=(data||[]).slice();}
+async function saveToHist(nm){nm=dec(nm);const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
+  if(!NAST.ridici[nm])return;const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
   let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ);}catch(e){toast('Nelze uložit — doplň cíle/částky řidiče.');return;}
-  const isNew=pushHist(nm,mk,y,m,res);saveCloud(false);fillHistFilter();renderHist();
-  toast((isNew?'Uloženo do historie: ':'Aktualizováno v historii: ')+nm+'.');}
-function saveAllToHist(){const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
+  const snap=histSnap(nm,mk,y,m,res);const isNew=!HIST.some(h=>h.id===snap.id);
+  setSync('busy','Ukládám…');const ok=await dbUpsertHist([snap]);
+  if(ok){localUpsertHist(snap);fillHistFilter();renderHist();setSync('ok','Uloženo ✓');toast((isNew?'Uloženo do historie: ':'Aktualizováno v historii: ')+nm+'.');}else setSync('err','Chyba');}
+async function saveAllToHist(){const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
   const names=Object.keys(NAST.ridici);if(!names.length){toast('Žádní řidiči.');return;}
-  const[y,m]=mk.split('-').map(Number);let n=0;
-  for(const nm of names){const ov=(VYJ[mk]||{})[nm]||null;let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ);}catch(e){continue;}pushHist(nm,mk,y,m,res);n++;}
-  saveCloud(false);fillHistFilter();renderHist();toast(n+' příkazů uloženo do historie ('+MESICE[m]+' '+y+').');}
-function printHist(id){id=dec(id);const h=(NAST.historie||[]).find(x=>x.id===id);if(!h)return;
-  document.getElementById('printRoot').innerHTML=a4Html(h.firma,h.ridic,h.res,h.obdobi,h.ucel,h.prac,h.zakladni);
+  const[y,m]=mk.split('-').map(Number);const snaps=[];
+  for(const nm of names){const ov=(VYJ[mk]||{})[nm]||null;let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ);}catch(e){continue;}snaps.push(histSnap(nm,mk,y,m,res));}
+  if(!snaps.length){toast('Nic k uložení.');return;}
+  setSync('busy','Ukládám…');const ok=await dbUpsertHist(snaps);
+  if(ok){snaps.forEach(localUpsertHist);fillHistFilter();renderHist();setSync('ok','Uloženo ✓');toast(snaps.length+' příkazů uloženo do historie ('+MESICE[m]+' '+y+').');}else setSync('err','Chyba');}
+function printHist(id){id=dec(id);const h=HIST.find(x=>x.id===id);if(!h)return;
+  document.getElementById('printRoot').innerHTML=a4Html(h.data.firma,h.ridic,h.data.res,h.obdobi,h.data.ucel,h.data.prac,h.data.zakladni);
   setTimeout(()=>window.print(),60);}
-function delHist(id){id=dec(id);const h=(NAST.historie||[]).find(x=>x.id===id);if(!h)return;
+async function delHist(id){id=dec(id);const h=HIST.find(x=>x.id===id);if(!h)return;
   if(!confirm('Smazat z historie: '+h.ridic+' — '+h.obdobi+'?'))return;
-  NAST.historie=(NAST.historie||[]).filter(x=>x.id!==id);saveCloud(false);fillHistFilter();renderHist();toast('Smazáno z historie.');}
+  const{error}=await sb.from(HTABLE).delete().eq('id',id);
+  if(error){console.error(error);toast('Chyba mazání.');return;}
+  HIST=HIST.filter(x=>x.id!==id);fillHistFilter();renderHist();toast('Smazáno z historie.');}
 function fillHistFilter(){const sel=document.getElementById('histFilter');if(!sel)return;const cur=sel.value;
-  const names=[...new Set((NAST.historie||[]).map(h=>h.ridic))].sort();
+  const names=[...new Set(HIST.map(h=>h.ridic))].sort();
   sel.innerHTML='<option value="__all">Všichni řidiči</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
   if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;}
 function renderHist(){const box=document.getElementById('histList');if(!box)return;
-  let list=(NAST.historie||[]).slice();
+  let list=HIST.slice();
   const sel=document.getElementById('histFilter');const fv=sel?sel.value:'__all';
   if(fv&&fv!=='__all')list=list.filter(h=>h.ridic===fv);
   list.sort((a,b)=>(b.mk||'').localeCompare(a.mk||'')||(a.ridic||'').localeCompare(b.ridic||''));
-  const sub=document.getElementById('histSub');if(sub){const tot=(NAST.historie||[]).length;sub.textContent=tot?(tot+' záznamů celkem'):'';}
+  const sub=document.getElementById('histSub');if(sub){const tot=HIST.length;sub.textContent=tot?(tot+' záznamů celkem'):'';}
   if(!list.length){box.innerHTML='<div class="empty">Zatím nic v historii. V záložce <b>Generovat</b> ulož příkaz tlačítkem „Do historie“.</div>';return;}
-  box.innerHTML=list.map(h=>{
+  box.innerHTML=list.map(h=>{const r=h.data&&h.data.res?h.data.res:{trips:[],celkem:0,celkem_km:0};
     const dt=new Date(h.vytvoreno);const dts=isNaN(dt.getTime())?'':(dt.getDate()+'. '+(dt.getMonth()+1)+'. '+dt.getFullYear());
-    const trips=(h.res.trips||[]).map(t=>`<div class="hist-trip"><span class="dt">${t.datum}</span><b>${t.dest}</b><span class="km">${t.km} km</span></div>`).join('');
+    const trips=(r.trips||[]).map(t=>`<div class="hist-trip"><span class="dt">${t.datum}</span><b>${t.dest}</b><span class="km">${t.km} km</span></div>`).join('');
     return `<div class="card hist-card"><div class="dh"><div class="avatar" style="background:${avc(h.ridic)}">${initials(h.ridic)}</div>
-      <div><div class="nm">${h.ridic}</div><div class="sub">${h.obdobi} • ${h.res.trips.length} jízd${dts?' • uloženo '+dts:''}</div></div>
-      <div class="badge brand">${kc(h.res.celkem)} Kč</div></div>
-      <details class="adv"><summary>Kam jel — ${h.res.celkem_km} km celkem</summary><div class="hist-trips">${trips}</div></details>
+      <div><div class="nm">${h.ridic}</div><div class="sub">${h.obdobi} • ${(r.trips||[]).length} jízd${dts?' • uloženo '+dts:''}</div></div>
+      <div class="badge brand">${kc(r.celkem)} Kč</div></div>
+      <details class="adv"><summary>Kam jel — ${r.celkem_km} km celkem</summary><div class="hist-trips">${trips}</div></details>
       <div style="margin-top:10px;display:flex;gap:8px"><button class="btn soft sm" onclick="printHist('${encodeURIComponent(h.id)}')">Tisk / PDF</button>
       <button class="btn danger sm" onclick="delHist('${encodeURIComponent(h.id)}')">Smazat</button></div></div>`;
   }).join('');}
@@ -491,7 +499,12 @@ function renderHist(){const box=document.getElementById('histList');if(!box)retu
 /* ====== Cloud (Supabase) ====== */
 const TABLE='cp_shared';      // sdílená týmová data (jedna sada pro všechny přihlášené)
 const SHARED_ID='main';
+const HTABLE='cp_historie';   // archiv příkazů (jeden řádek na snímek → bez kolizí)
 let sb=null, MODE='signin', CURRENT_UID=null, saveTimer=null;
+let HIST=[];                  // historie načtená z cp_historie
+let sharedVersion=null;       // updated_at poslední známé verze cp_shared (optimistický zámek)
+let rtChannel=null;           // Realtime kanál (živá synchronizace)
+let applyingRemote=false;     // probíhá aplikace vzdálené změny → nespouštět autosave
 function setSync(state,text){const dot=document.getElementById('syncDot');const t=document.getElementById('syncText');
  dot.className='dot'+(state?(' '+state):'');t.textContent=text;}
 function authMsg(t,cls){const e=document.getElementById('authMsg');e.textContent=t;e.className='auth-msg'+(cls?(' '+cls):'');}
@@ -527,9 +540,9 @@ async function doAuth(){
  }catch(e){authMsg('Chyba: '+(e.message||e),'err');}
  finally{btn.disabled=false;}
 }
-async function doLogout(){try{await sb.auth.signOut();}catch(e){}CURRENT_UID=null;}
+async function doLogout(){await unsubscribeRealtime();try{await sb.auth.signOut();}catch(e){}CURRENT_UID=null;HIST=[];sharedVersion=null;}
 
-function showGate(){document.getElementById('appMain').style.display='none';document.getElementById('authGate').style.display='flex';}
+function showGate(){unsubscribeRealtime();document.getElementById('appMain').style.display='none';document.getElementById('authGate').style.display='flex';}
 async function showApp(user){
  document.getElementById('authGate').style.display='none';
  document.getElementById('appMain').style.display='';
@@ -542,43 +555,111 @@ function applySession(session){if(session&&session.user)showApp(session.user);el
 async function loadCloud(uid){
  CURRENT_UID=uid;setSync('busy','Načítám…');
  try{
-  const{data,error}=await sb.from(TABLE).select('nastaveni,vyjimky').eq('id',SHARED_ID).maybeSingle();
+  const{data,error}=await sb.from(TABLE).select('nastaveni,vyjimky,updated_at').eq('id',SHARED_ID).maybeSingle();
   if(error)throw error;
-  if(data&&data.nastaveni){NAST=Object.assign(defaultNast(),data.nastaveni);if(!NAST.ridici)NAST.ridici={};VYJ=data.vyjimky||{};}
-  else{NAST=defaultNast();VYJ={};}
+  if(data){NAST=Object.assign(defaultNast(),data.nastaveni||{});if(!NAST.ridici)NAST.ridici={};VYJ=data.vyjimky||{};sharedVersion=data.updated_at||null;}
+  else{NAST=defaultNast();VYJ={};sharedVersion=null;}
+  await loadHist();
+  await migrateOldHistory();
  }catch(e){console.error(e);setSync('err','Chyba načítání');toast('Nepodařilo se načíst data z cloudu.');}
  reRender();
+ subscribeRealtime();
  if(CURRENT_UID)setSync('ok','Načteno z cloudu');
+}
+// Jednorázová migrace: stará historie uložená v blobu → do cp_historie.
+async function migrateOldHistory(){
+ if(Array.isArray(NAST.historie)&&NAST.historie.length){
+  const snaps=NAST.historie.map(h=>h.data?h:({id:h.id,ridic:h.ridic,mk:h.mk,obdobi:h.obdobi,vytvoreno:h.vytvoreno||new Date().toISOString(),
+    data:{firma:h.firma,ucel:h.ucel,prac:h.prac,zakladni:h.zakladni,res:h.res}}));
+  if(await dbUpsertHist(snaps)){snaps.forEach(localUpsertHist);delete NAST.historie;await saveCloud(false);}  // smaž z blobu až po úspěšné migraci (upsert je idempotentní)
+ }
+}
+async function reloadShared(){
+ const{data,error}=await sb.from(TABLE).select('nastaveni,vyjimky,updated_at').eq('id',SHARED_ID).maybeSingle();
+ if(error){console.error(error);return;}
+ if(data){applyingRemote=true;NAST=Object.assign(defaultNast(),data.nastaveni||{});if(!NAST.ridici)NAST.ridici={};delete NAST.historie;VYJ=data.vyjimky||{};sharedVersion=data.updated_at||null;reRender();applyingRemote=false;}
+}
+function subscribeRealtime(){
+ if(!sb||rtChannel)return;
+ rtChannel=sb.channel('cp-team-'+Math.floor(performance.now()))
+  .on('postgres_changes',{event:'*',schema:'public',table:TABLE},payload=>{
+    const row=payload.new;if(!row||!row.updated_at)return;
+    if(sharedVersion&&row.updated_at===sharedVersion)return; // vlastní změna → ignoruj
+    onRemoteShared(row);
+  })
+  .on('postgres_changes',{event:'*',schema:'public',table:HTABLE},async()=>{
+    await loadHist();fillHistFilter();renderHist();
+  })
+  .subscribe();
+}
+async function unsubscribeRealtime(){if(rtChannel&&sb){try{await sb.removeChannel(rtChannel);}catch(e){}}rtChannel=null;}
+function onRemoteShared(row){
+ const ae=document.activeElement;
+ const editing=ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)&&ae.closest&&ae.closest('#appMain');
+ if(editing||saveTimer){setSync('busy','Změněno jinde');toast('Data změnil někdo jiný — po uložení/obnovení se sjednotí.');return;}
+ applyingRemote=true;
+ NAST=Object.assign(defaultNast(),row.nastaveni||{});if(!NAST.ridici)NAST.ridici={};delete NAST.historie;VYJ=row.vyjimky||{};sharedVersion=row.updated_at||null;
+ reRender();applyingRemote=false;setSync('ok','Aktualizováno (tým)');
 }
 function reRender(){
  document.getElementById('email').value=NAST.email_ucetni||'';
- if(!Array.isArray(NAST.historie))NAST.historie=[];
  ridCards();fillDrivers();loadVyj();genCards();chips();updChip();fillHistFilter();renderHist();
 }
 function updChip(){const n=Object.keys(NAST.ridici).length;document.getElementById('chipInfo').textContent=n+' '+(n===1?'řidič':(n>=2&&n<=4?'řidiči':'řidičů'));}
 
-function scheduleSave(){if(!CURRENT_UID)return;setSync('busy','Ukládám…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveCloud(false),900);}
+function scheduleSave(){if(!CURRENT_UID||applyingRemote)return;setSync('busy','Ukládám…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveCloud(false),900);}
 async function saveCloud(manual){
  if(!CURRENT_UID){if(manual)toast('Nejsi přihlášený.');return;}
- clearTimeout(saveTimer);
+ clearTimeout(saveTimer);saveTimer=null;
  NAST.email_ucetni=document.getElementById('email').value||NAST.email_ucetni;
+ const stamp=new Date().toISOString();
  setSync('busy','Ukládám…');
  try{
-  const{error}=await sb.from(TABLE).upsert({id:SHARED_ID,nastaveni:NAST,vyjimky:VYJ,updated_at:new Date().toISOString()},{onConflict:'id'});
+  // Neznáme verzi (např. po chybě načtení) → zjisti aktuální stav, ať máme o co opřít zámek.
+  if(!sharedVersion){
+   const cv=await sb.from(TABLE).select('updated_at').eq('id',SHARED_ID).maybeSingle();
+   if(cv.error)throw cv.error;
+   if(cv.data&&cv.data.updated_at){sharedVersion=cv.data.updated_at;}
+   else{ // řádek ještě neexistuje → vlož
+    const ins=await sb.from(TABLE).upsert({id:SHARED_ID,nastaveni:NAST,vyjimky:VYJ,updated_at:stamp},{onConflict:'id'}).select('updated_at');
+    if(ins.error)throw ins.error;
+    sharedVersion=ins.data&&ins.data[0]&&ins.data[0].updated_at;
+    setSync('ok','Uloženo ✓');if(manual)toast('Uloženo do cloudu.');return;
+   }
+  }
+  // Optimistický zámek: zapiš jen pokud se verze od načtení nezměnila.
+  const{data,error}=await sb.from(TABLE).update({nastaveni:NAST,vyjimky:VYJ,updated_at:stamp}).eq('id',SHARED_ID).eq('updated_at',sharedVersion).select('updated_at');
   if(error)throw error;
+  if(!data||!data.length){
+   // Konflikt — někdo jiný uložil mezitím. Nepřepisuj tiše: načti aktuální verzi.
+   setSync('err','Konflikt — načítám');
+   toast('Data byla mezitím změněna jinde. Načítám aktuální verzi — zkontroluj prosím své změny.');
+   await reloadShared();
+   return;
+  }
+  sharedVersion=data[0].updated_at;
   setSync('ok','Uloženo ✓');if(manual)toast('Uloženo do cloudu.');
  }catch(e){console.error(e);setSync('err','Chyba ukládání');toast('Chyba ukládání do cloudu.');}
 }
 
 /* ====== Backup export / import (.json) ====== */
-function exportBackup(){const obj={nastaveni:NAST,vyjimky:VYJ,_exported:new Date().toISOString()};
+function exportBackup(){const n=Object.assign({},NAST);delete n.historie;
+ const obj={nastaveni:n,vyjimky:VYJ,historie:HIST,_exported:new Date().toISOString()};
  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}));
  a.download='cestovni-prikazy-zaloha.json';a.click();toast('Záloha stažena.');}
 function importBackup(){const inp=document.createElement('input');inp.type='file';inp.accept='application/json,.json';
  inp.onchange=async()=>{const f=inp.files[0];if(!f)return;try{const o=JSON.parse(await f.text());
   if(o.nastaveni){NAST=Object.assign(defaultNast(),o.nastaveni);}else if(o.ridici){NAST=Object.assign(defaultNast(),o);}
   if(o.vyjimky){VYJ=o.vyjimky;}else if(!o.nastaveni&&!o.ridici){VYJ=o;}
-  if(!NAST.ridici)NAST.ridici={};reRender();saveCloud(true);toast('Záloha načtena a uložena do cloudu.');
+  delete NAST.historie;if(!NAST.ridici)NAST.ridici={};
+  reRender();
+  try{const cv=await sb.from(TABLE).select('updated_at').eq('id',SHARED_ID).maybeSingle();if(cv.data)sharedVersion=cv.data.updated_at;}catch(e){}
+  await saveCloud(true);
+  if(Array.isArray(o.historie)&&o.historie.length){
+   const snaps=o.historie.map(h=>h.data?h:({id:h.id,ridic:h.ridic,mk:h.mk,obdobi:h.obdobi,vytvoreno:h.vytvoreno||new Date().toISOString(),data:{firma:h.firma,ucel:h.ucel,prac:h.prac,zakladni:h.zakladni,res:h.res}}));
+   if(await dbUpsertHist(snaps)){await loadHist();fillHistFilter();renderHist();}
+  }
+  toast('Záloha načtena a uložena do cloudu.');
  }catch(e){toast('Soubor se nepodařilo načíst.');}};inp.click();}
 
 /* ====== Init ====== */

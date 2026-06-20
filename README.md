@@ -8,7 +8,10 @@ Přihlášení e‑mailem a heslem, data se synchronizují přes Supabase mezi v
 - **Frontend:** jeden statický `index.html` (žádný build), hostovaný na GitHub Pages.
 - **Auth + databáze:** Supabase (projekt `fpknbrzbqpalguajskut`).
   - Přihlášení: Supabase Auth (e‑mail + heslo).
-  - Data: tabulka `cestovni_prikazy_data` (jeden řádek na uživatele) chráněná Row Level Security.
+  - Data: **sdílený týmový model** — tabulka `cp_shared` s jedním řádkem (`id='main'`),
+    který sdílí celý tým. RLS dovolí přístup každému přihlášenému uživateli; okruh
+    lidí se řídí vypnutím veřejných registrací (jen pozvaní mají účet).
+    (Dřívější per-user tabulka `cestovni_prikazy_data` zůstává nevyužitá.)
 - **Konfigurace:** `config.js` obsahuje URL projektu a veřejný `anon` klíč
   (anon klíč je určen pro klientské aplikace; přístup k datům hlídá RLS).
 

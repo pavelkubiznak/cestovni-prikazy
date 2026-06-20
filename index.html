@@ -489,7 +489,8 @@ function renderHist(){const box=document.getElementById('histList');if(!box)retu
   }).join('');}
 
 /* ====== Cloud (Supabase) ====== */
-const TABLE='cestovni_prikazy_data';
+const TABLE='cp_shared';      // sdílená týmová data (jedna sada pro všechny přihlášené)
+const SHARED_ID='main';
 let sb=null, MODE='signin', CURRENT_UID=null, saveTimer=null;
 function setSync(state,text){const dot=document.getElementById('syncDot');const t=document.getElementById('syncText');
  dot.className='dot'+(state?(' '+state):'');t.textContent=text;}
@@ -541,7 +542,7 @@ function applySession(session){if(session&&session.user)showApp(session.user);el
 async function loadCloud(uid){
  CURRENT_UID=uid;setSync('busy','Načítám…');
  try{
-  const{data,error}=await sb.from(TABLE).select('nastaveni,vyjimky').eq('user_id',uid).maybeSingle();
+  const{data,error}=await sb.from(TABLE).select('nastaveni,vyjimky').eq('id',SHARED_ID).maybeSingle();
   if(error)throw error;
   if(data&&data.nastaveni){NAST=Object.assign(defaultNast(),data.nastaveni);if(!NAST.ridici)NAST.ridici={};VYJ=data.vyjimky||{};}
   else{NAST=defaultNast();VYJ={};}
@@ -563,7 +564,7 @@ async function saveCloud(manual){
  NAST.email_ucetni=document.getElementById('email').value||NAST.email_ucetni;
  setSync('busy','Ukládám…');
  try{
-  const{error}=await sb.from(TABLE).upsert({user_id:CURRENT_UID,nastaveni:NAST,vyjimky:VYJ,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+  const{error}=await sb.from(TABLE).upsert({id:SHARED_ID,nastaveni:NAST,vyjimky:VYJ,updated_at:new Date().toISOString()},{onConflict:'id'});
   if(error)throw error;
   setSync('ok','Uloženo ✓');if(manual)toast('Uloženo do cloudu.');
  }catch(e){console.error(e);setSync('err','Chyba ukládání');toast('Chyba ukládání do cloudu.');}

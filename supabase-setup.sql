@@ -1,33 +1,27 @@
 -- ============================================================
--- Cestovní příkazy SINTERA — Supabase setup
--- Run once in the Supabase SQL Editor (project fpknbrzbqpalguajskut).
--- Creates an isolated, namespaced table with strict Row Level Security
--- so every user can only read/write their OWN row. Does not touch any
--- existing tables.
+-- Cestovní příkazy SINTERA — Supabase setup (SDÍLENÝ TÝMOVÝ MODEL)
+-- Spustit jednou v SQL Editoru projektu cestovni-prikazy (tgwlzmrdirqrqtqgprod).
+--
+-- Jedna společná sada dat pro celý tým: každý přihlášený uživatel vidí a
+-- upravuje stejné řidiče / cesty / výjimky / historii. Přístup se omezuje
+-- tím, že vypnete veřejné registrace (Authentication → Providers → Email →
+-- "Allow new users to sign up" OFF) — účet má jen ten, koho pustíte dovnitř.
 -- ============================================================
 
-create table if not exists public.cestovni_prikazy_data (
-  user_id    uuid primary key references auth.users(id) on delete cascade,
+create table if not exists public.cp_shared (
+  id         text primary key,
   nastaveni  jsonb not null default '{}'::jsonb,
   vyjimky    jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
 
-alter table public.cestovni_prikazy_data enable row level security;
+-- jediný sdílený řádek
+insert into public.cp_shared (id) values ('main') on conflict (id) do nothing;
 
--- Each authenticated user may only see and modify their own row.
-drop policy if exists "cp_select_own" on public.cestovni_prikazy_data;
-create policy "cp_select_own" on public.cestovni_prikazy_data
-  for select using (auth.uid() = user_id);
+alter table public.cp_shared enable row level security;
 
-drop policy if exists "cp_insert_own" on public.cestovni_prikazy_data;
-create policy "cp_insert_own" on public.cestovni_prikazy_data
-  for insert with check (auth.uid() = user_id);
-
-drop policy if exists "cp_update_own" on public.cestovni_prikazy_data;
-create policy "cp_update_own" on public.cestovni_prikazy_data
-  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-drop policy if exists "cp_delete_own" on public.cestovni_prikazy_data;
-create policy "cp_delete_own" on public.cestovni_prikazy_data
-  for delete using (auth.uid() = user_id);
+-- Každý přihlášený (authenticated) uživatel má plný přístup ke sdíleným datům.
+drop policy if exists "cp_shared_rw" on public.cp_shared;
+create policy "cp_shared_rw" on public.cp_shared
+  for all to authenticated
+  using (true) with check (true);

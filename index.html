@@ -103,6 +103,11 @@ details.adv[open]>summary:before{content:"\25BE ";}
 .cal-legend span{display:inline-flex;align-items:center;gap:5px;}
 .cal-legend i{width:13px;height:13px;border-radius:4px;display:inline-block;border:1px solid var(--line);}
 .cal-legend i.iv{background:var(--warn-tint);border-color:#e7c878;} .cal-legend i.io{background:var(--surface-2);border-style:dashed;}
+.monthpick{display:flex;gap:8px;}
+.monthpick select{font-family:var(--f);font-size:13.5px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:var(--r-ctrl);padding:8px 11px;cursor:pointer;transition:border-color .12s,box-shadow .12s;}
+.monthpick select:first-child{min-width:120px;}
+.monthpick select:hover{border-color:#d6d9de;}
+.monthpick select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-tint);}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
 .chip2{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:5px 7px 5px 13px;font-size:12.5px;}
 .chip2 b{color:var(--brand-d);font-weight:600;}
@@ -205,7 +210,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
   <h2 class="sec">Generovat cestovní příkazy</h2>
   <p class="lead">Vyber měsíc a zobraz náhled. Tlačítkem <b>Náhled &amp; tisk</b> otevřeš hotový list k vytištění nebo uložení do PDF (v dialogu tisku zvol „Uložit jako PDF“).</p>
   <div class="card"><div class="grid" style="align-items:flex-end">
-    <div class="fld"><label>Měsíc</label><input type="month" id="genMonth" class="w-md"></div>
+    <div class="fld"><label>Měsíc</label><div id="genMonthPick" class="monthpick"></div><input type="hidden" id="genMonth"></div>
     <div class="fld" style="flex:1"><span class="small muted" id="genSub"></span></div>
     <div class="fld" style="flex-direction:row;gap:8px;align-items:flex-end"><button class="btn ghost sm" type="button" onclick="regenAll()">🎲 Přegenerovat vše</button><button class="btn ghost sm" type="button" onclick="saveAllToHist()">Uložit všechny do historie</button></div>
   </div></div>
@@ -226,7 +231,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
   <p class="lead">Platí jen pro zvolený měsíc, pak se vše vrátí ke stálému nastavení. Vyplň jen to, co se mění.</p>
   <div class="card">
     <div class="grid">
-      <div class="fld"><label>Měsíc</label><input type="month" id="vMonth" class="w-md"></div>
+      <div class="fld"><label>Měsíc</label><div id="vMonthPick" class="monthpick"></div><input type="hidden" id="vMonth"></div>
       <div class="fld"><label>Řidič</label><select id="vDriver" class="w-xl"></select></div>
     </div><hr class="row-sep">
     <div class="grid">
@@ -699,11 +704,18 @@ function importBackup(){const inp=document.createElement('input');inp.type='file
 
 /* ====== Init ====== */
 function initMonths(){const now=new Date();const mk=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
- document.getElementById('genMonth').value=mk;document.getElementById('vMonth').value=mk;}
+ document.getElementById('genMonth').value=mk;document.getElementById('vMonth').value=mk;
+ buildMonthPicker('genMonthPick','genMonth',genCards);
+ buildMonthPicker('vMonthPick','vMonth',loadVyj);}
+function buildMonthPicker(contId,hiddenId,onChange){const cont=document.getElementById(contId);if(!cont)return;
+ const hid=document.getElementById(hiddenId);const cur=hid.value||(new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'));
+ let[y,m]=cur.split('-').map(Number);const yNow=new Date().getFullYear();
+ const mon=document.createElement('select');for(let i=1;i<=12;i++)mon.add(new Option(MESICE[i].charAt(0).toUpperCase()+MESICE[i].slice(1),i));mon.value=m;
+ const yr=document.createElement('select');for(let yy=yNow-2;yy<=yNow+3;yy++)yr.add(new Option(yy,yy));yr.value=y;
+ const sync=()=>{hid.value=yr.value+'-'+String(mon.value).padStart(2,'0');if(onChange)onChange();};
+ mon.onchange=sync;yr.onchange=sync;cont.innerHTML='';cont.append(mon,yr);}
 function wireAutosave(){const main=document.getElementById('appMain');
  main.addEventListener('input',e=>{if(e.target.closest('.savebar'))return;scheduleSave();});
- document.getElementById('genMonth').addEventListener('change',genCards);
- document.getElementById('vMonth').addEventListener('change',loadVyj);
  document.getElementById('vDriver').addEventListener('change',loadVyj);
  document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')doAuth();});
  document.getElementById('authEmail').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authPass').focus();});}

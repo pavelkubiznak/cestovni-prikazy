@@ -297,7 +297,8 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/pdfmake.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/vfs_fonts.js"></script>
 <script src="config.js"></script>
 <script>
 /* ====== Rates (vyhláška) — not personal data, shipped with the app ====== */
@@ -748,20 +749,64 @@ function pdfOverlay(msg){let o=document.getElementById('pdfOverlay');
  if(msg===false){if(o)o.remove();return;}
  if(!o){o=document.createElement('div');o.id='pdfOverlay';o.style.cssText='position:fixed;inset:0;background:rgba(238,242,248,.97);z-index:2147483600;display:flex;align-items:center;justify-content:center;font-family:var(--f);font-size:16px;color:#14161a;font-weight:600;text-align:center;padding:20px;';document.body.appendChild(o);}
  o.textContent=msg||'Generuji PDF…';}
-async function genPdfBlob(nm,res,obdobi){
- const inner=a4Html(NAST.firma,nm,res,obdobi,NAST.ucel_cesty||'Pracovní jednání',NAST.prac_doba||'',SZ.zakladni);
- const wrap=document.createElement('div');
- // renderovat NA obrazovce (jinak html2canvas vykreslí prázdno) — překryje to overlay „Generuji…"
- wrap.style.cssText='position:fixed;left:0;top:0;width:210mm;background:#fff;color:#000;z-index:2147483000;';
- wrap.innerHTML=inner;document.body.appendChild(wrap);
- try{
-  await new Promise(r=>setTimeout(r,80)); // nech doběhnout layout
-  const opt={margin:[8,8,8,8],filename:nm+'.pdf',image:{type:'jpeg',quality:0.98},
-   html2canvas:{scale:2,backgroundColor:'#ffffff',useCORS:true,scrollX:0,scrollY:0,windowWidth:794},
-   jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};
-  return await html2pdf().set(opt).from(wrap).output('blob');
- } finally { wrap.remove(); }
+// Vektorové PDF z dat (pdfmake) — spolehlivé, nezávislé na vykreslení obrazovky.
+function pdfDocDef(firma,name,res,obdobi,ucel,pracDoba,zakladni){
+ const d=res.d,trips=res.trips,rate=res.rate;
+ const home=d.vychozi_bod,navrat=d.navratovy_bod;
+ const palivo=PALIVO_NAZEV[d.palivo||'natural95'];
+ const vyhl=VYHLASKA[obdobi.split(' ')[1]]||'';
+ const prikazBody=[[{text:'Počátek cesty (místo, datum, hod.)',style:'th'},{text:'Účel cesty',style:'th'},{text:'Konec cesty (místo, datum, hod.)',style:'th'}]];
+ trips.forEach(t=>prikazBody.push([{text:home+', '+t.datum+', '+t.odj},{text:ucel,alignment:'center'},{text:navrat+', '+t.datum+', '+t.prij2}]));
+ const vyHead=['Datum','Odj./\npříj.','Místo','v hod.','Dopr.','Vzdál.\nkm','Poč./konec','Jízdné Kč','Strav.','Nutné','Celkem Kč','Upr.'].map(h=>({text:h,style:'vyth'}));
+ const cell=(t,a,b)=>({text:t==null?'':String(t),style:'vytd',alignment:a||'left',bold:!!b});
+ const leg=(dat,sm,mi,ca,km,j)=>[cell(dat),cell(sm),cell(mi),cell(ca,'center'),cell('AUV','center'),cell(km||'','right'),cell(''),cell(j?kc(j):'','right'),cell(''),cell(''),cell(j?kc(j):'','right'),cell('')];
+ const vyBody=[vyHead];
+ trips.forEach(t=>{const j=Math.round(t.km*rate*100)/100;vyBody.push(leg(t.datum,'Odjezd',home,t.odj,t.km,j));vyBody.push(leg('','Příjezd',t.dest,t.prij,0,0));vyBody.push(leg('','Odjezd',t.dest,t.odj2,t.km,j));vyBody.push(leg('','Příjezd',navrat,t.prij2,0,0));});
+ vyBody.push([cell(''),cell('Celkem km','center',true),cell(''),cell(''),cell(''),cell(res.celkem_km,'right',true),cell(''),cell(kc(res.celkem),'right',true),cell('0','right'),cell('0','right'),cell(kc(res.celkem),'right',true),cell('')]);
+ const field=(lab,val,big)=>({columns:[{text:lab,bold:true,width:'auto',fontSize:8},{text:(val||'')+'',width:'*',fontSize:big?10:8.5,bold:!!big,decoration:val?'underline':undefined,margin:[5,0,0,0]}],margin:[0,2.5,0,2.5]});
+ const sign3=(a,b,c)=>({columns:[{text:a||'',alignment:'center',fontSize:7.5},{text:b||'',alignment:'center',fontSize:7.5},{text:c||'',alignment:'center',fontSize:7.5}],margin:[0,20,0,0]});
+ const tot=(lab)=>({columns:[{text:'',width:'*'},{text:[{text:lab+'  '},{text:kc(res.celkem)+' Kč',bold:true,fontSize:10}],width:'auto'}],margin:[0,3,0,0]});
+ return {
+  pageSize:'A4', pageMargins:[34,30,34,30], defaultStyle:{fontSize:8.5,color:'#000'},
+  content:[
+   {columns:[{text:firma,bold:true,fontSize:9,width:'*'},{text:'CESTOVNÍ PŘÍKAZ',bold:true,fontSize:16,alignment:'center',characterSpacing:2,width:'auto'},{text:[{text:'období:\n',fontSize:7.5},{text:obdobi,bold:true}],alignment:'right',width:'*'}],margin:[0,0,0,8]},
+   field('1. Příjmení, jméno, titul',name,true),
+   field('2. Bydliště',d.bydliste),
+   field('Normální pracovní doba:',pracDoba),
+   {table:{widths:['42%','24%','34%'],body:prikazBody},layout:'lightHorizontalLines',margin:[0,6,0,0],fontSize:8},
+   {text:'3. Zaměstnanec s pracovní cestou souhlasí',bold:true,margin:[0,9,0,3]},
+   {stack:[{text:'4. Určený dopravní prostředek (u vlastního vozidla druh, SPZ a přiložit kopii TP):',bold:true,fontSize:8},{text:(d.spz||'')+' – '+(d.auto||''),bold:true,decoration:'underline',margin:[6,1,0,0]}],margin:[0,2,0,2]},
+   field('5. Povolená záloha Kč',''),
+   sign3('Podpis pokladníka','Datum a podpis pracovníka\noprávněného k povolení cesty',''),
+   {text:'VYÚČTOVÁNÍ PRACOVNÍ CESTY',bold:true,fontSize:11,margin:[0,14,0,4]},
+   field('6. Zpráva o výsledku pracovní cesty byla podána dne',''),
+   {text:'7. Výdajový – příjmový pokladní doklad č. ____________',margin:[0,2,0,2]},
+   tot('Účtovaná náhrada celkem:'),
+   tot('Doplatek – Přeplatek:'),
+   sign3('Datum a podpis pracovníka,\nkterý upravil vyúčtování','Datum a podpis příjemce\n(průkaz totožnosti)','Schválil\n(datum a podpis)'),
+   {text:'VYÚČTOVÁNÍ PRACOVNÍ CESTY',bold:true,fontSize:14,characterSpacing:2,alignment:'center',pageBreak:'before',margin:[0,0,0,8]},
+   field('Zaměstnanec:',name+'          období: '+obdobi,true),
+   {table:{headerRows:1,widths:[40,28,80,28,26,32,42,44,30,32,46,22],body:vyBody},layout:'grid',margin:[0,4,0,0]},
+   {columns:[{text:'',width:'*'},{text:[{text:'Celkem k proplacení:  '},{text:kc(res.celkem)+' Kč',bold:true,fontSize:10}],width:'auto'}],margin:[0,6,0,0]},
+   {text:'Vozidlo: '+(d.auto||'')+' | SPZ '+(d.spz||'')+' | náhrada '+kc(rate)+' Kč/km (základní '+kc(zakladni)+' Kč/km + spotřeba '+res.avg.toFixed(2)+' l/100 km × '+kc(res.cena)+' Kč/l, '+palivo+', vyhláška '+vyhl+').',fontSize:7,color:'#333',margin:[0,4,0,0]},
+   sign3('','Datum a podpis pracovníka','')
+  ],
+  styles:{
+   th:{bold:true,fontSize:7.5,fillColor:'#f1f1f1',alignment:'center'},
+   vyth:{bold:true,fontSize:6,fillColor:'#f1f1f1',alignment:'center'},
+   vytd:{fontSize:6.5}
+  }
+ };
 }
+function genPdfBlob(nm,res,obdobi){
+ return new Promise((resolve,reject)=>{
+  try{
+   const dd=pdfDocDef(NAST.firma,nm,res,obdobi,NAST.ucel_cesty||'Pracovní jednání',NAST.prac_doba||'',zakladniSazba());
+   pdfMake.createPdf(dd).getBlob(b=>resolve(b),e=>reject(e));
+  }catch(e){reject(e);}
+ });
+}
+function zakladniSazba(){return SZ.zakladni;}
 async function sendToAccountant(){
  const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
  const to=(NAST.emaily||[]).map(e=>(e||'').trim()).filter(Boolean);

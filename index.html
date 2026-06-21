@@ -450,7 +450,7 @@ function genCards(){const mk=curMonth();const box=document.getElementById('genCa
  let h='';for(const[nm,d]of Object.entries(NAST.ridici)){const ov=(VYJ[mk]||{})[nm]||null;
   let res;try{res=genForDriver(nm,d,y,m,ov,SZ,seedFor(nm,mk));}catch(e){h+=`<div class="gen-card"><div class="who"><div class="nm">${nm}</div><div class="meta" style="color:var(--danger)">Chybí cíle/částky — doplň v Řidiči</div></div></div>`;continue;}
   h+=`<div class="gen-card"><div class="avatar" style="background:${avc(nm)}">${initials(nm)}</div>
-    <div class="who"><div class="nm">${nm}</div><div class="meta">${res.trips.length} jízd${ov?' • výjimka':''}</div></div>
+    <div class="who"><div class="nm">${nm}</div><div class="meta">${res.trips.length} jízd${ov?' • výjimka':''}${HIST.some(h=>h.id===nm+'|'+mk)?' • <span style="color:var(--ok)">✓ v historii</span>':''}</div></div>
     <div class="nums"><div class="kc">${kc(res.celkem)} Kč</div><div class="meta">${res.celkem_km} km</div></div>
     <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button><button class="btn ghost sm" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button><button class="btn ghost sm" title="Vylosovat jiné cíle" onclick="regenOne('${encodeURIComponent(nm)}')">🎲 Přegenerovat</button></div></div>`;}
  box.innerHTML=h;}
@@ -514,14 +514,18 @@ async function loadHist(){if(!CURRENT_UID){HIST=[];return;}
 async function saveToHist(nm){nm=dec(nm);const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
   if(!NAST.ridici[nm])return;const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
   let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));}catch(e){toast('Nelze uložit — doplň cíle/částky řidiče.');return;}
-  const snap=histSnap(nm,mk,y,m,res);const isNew=!HIST.some(h=>h.id===snap.id);
+  const snap=histSnap(nm,mk,y,m,res);const existing=HIST.find(h=>h.id===snap.id);
+  if(existing){const dt=new Date(existing.vytvoreno);const dts=isNaN(dt.getTime())?'':(' z '+dt.getDate()+'. '+(dt.getMonth()+1)+'. '+dt.getFullYear());const oa=existing.data&&existing.data.res?kc(existing.data.res.celkem):'?';
+   if(!confirm('⚠️ Pozor — pro „'+nm+'" za '+snap.obdobi+' už v historii máš uložený příkaz'+dts+' ('+oa+' Kč).\n\nOpravdu ho přepsat tímto novým ('+kc(res.celkem)+' Kč)?'))return;}
   setSync('busy','Ukládám…');const ok=await dbUpsertHist([snap]);
-  if(ok){localUpsertHist(snap);fillHistFilter();renderHist();setSync('ok','Uloženo ✓');toast((isNew?'Uloženo do historie: ':'Aktualizováno v historii: ')+nm+'.');}else setSync('err','Chyba');}
+  if(ok){localUpsertHist(snap);fillHistFilter();renderHist();setSync('ok','Uloženo ✓');toast((existing?'Aktualizováno v historii: ':'Uloženo do historie: ')+nm+'.');}else setSync('err','Chyba');}
 async function saveAllToHist(){const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
   const names=Object.keys(NAST.ridici);if(!names.length){toast('Žádní řidiči.');return;}
   const[y,m]=mk.split('-').map(Number);const snaps=[];
   for(const nm of names){const ov=(VYJ[mk]||{})[nm]||null;let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));}catch(e){continue;}snaps.push(histSnap(nm,mk,y,m,res));}
   if(!snaps.length){toast('Nic k uložení.');return;}
+  const dup=snaps.filter(s=>HIST.some(h=>h.id===s.id)).length;
+  if(dup){if(!confirm('⚠️ Pozor — '+dup+' z těchto příkazů už v historii je (za '+(MESICE[m]+' '+y)+'). Uložením je přepíšeš novými.\n\nOpravdu pokračovat?'))return;}
   setSync('busy','Ukládám…');const ok=await dbUpsertHist(snaps);
   if(ok){snaps.forEach(localUpsertHist);fillHistFilter();renderHist();setSync('ok','Uloženo ✓');toast(snaps.length+' příkazů uloženo do historie ('+MESICE[m]+' '+y+').');}else setSync('err','Chyba');}
 function printHist(id){id=dec(id);const h=HIST.find(x=>x.id===id);if(!h)return;

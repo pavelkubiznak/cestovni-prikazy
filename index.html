@@ -194,7 +194,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
   <div class="card"><div class="grid" style="align-items:flex-end">
     <div class="fld"><label>Měsíc</label><input type="month" id="genMonth" class="w-md"></div>
     <div class="fld" style="flex:1"><span class="small muted" id="genSub"></span></div>
-    <div class="fld"><button class="btn ghost sm" type="button" onclick="saveAllToHist()">Uložit všechny do historie</button></div>
+    <div class="fld" style="flex-direction:row;gap:8px;align-items:flex-end"><button class="btn ghost sm" type="button" onclick="regenAll()">🎲 Přegenerovat vše</button><button class="btn ghost sm" type="button" onclick="saveAllToHist()">Uložit všechny do historie</button></div>
   </div></div>
   <div class="cards" id="genCards"></div>
   <div class="note blue" style="margin-top:14px"><span class="i">i</span>
@@ -270,7 +270,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
 const SAZBY={"2026": {"zakladni": 5.9, "natural95": 34.7, "natural98": 39.0, "nafta": 34.1}};
 
 /* ====== Default settings (NO personal data — drivers are loaded from the cloud) ====== */
-function defaultNast(){return {firma:"Sintera Czech s.r.o.", email_ucetni:"", ucel_cesty:"Pracovní jednání", prac_doba:"od 9:00 - 17:30", sazby_dle_roku:JSON.parse(JSON.stringify(SAZBY)), ridici:{}};}
+function defaultNast(){return {firma:"Sintera Czech s.r.o.", email_ucetni:"", ucel_cesty:"Pracovní jednání", prac_doba:"od 9:00 - 17:30", sazby_dle_roku:JSON.parse(JSON.stringify(SAZBY)), ridici:{}, seeds:{}};}
 let NAST=defaultNast();
 let VYJ={};
 
@@ -294,12 +294,12 @@ function avgSpotreba(d){return (d.spotreba.mesto+d.spotreba.mimo+d.spotreba.komb
 function rateOf(d,sazby){return sazby.zakladni+(avgSpotreba(d)/100)*sazby[d.palivo||"natural95"];}
 function pickDest(cile,n,lo,hi,rng){const items=Object.entries(cile);if(n>items.length)n=items.length;let best=null;for(let t=0;t<8000;t++){const arr=shuffle(items.slice(),rng).slice(0,n);const s=arr.reduce((a,x)=>a+x[1],0);if(s>=lo&&s<=hi)return arr;const dd=Math.abs(s-(lo+hi)/2);if(!best||dd<best.d)best={d:dd,arr:arr};}return best.arr;}
 function timesFor(km,speed,rng){const oh=[8,8,8.5,9,9][Math.floor(rng()*5)];const jizda=Math.max(20,Math.round(km/speed*60/5)*5);const jed=[60,75,90,90,105,120][Math.floor(rng()*6)];const o=Math.round(oh*60),pc=o+jizda,oz=pc+jed,pd=oz+jizda;const t=x=>{x=Math.min(x,23*60+55);return Math.floor(x/60)+":"+String(x%60).padStart(2,"0");};return[t(o),t(pc),t(oz),t(pd)];}
-function genForDriver(name,base,y,m,override,sazby){
+function genForDriver(name,base,y,m,override,sazby,seedOverride){
   const d=Object.assign({},base,override||{});
   const rate=rateOf(d,sazby);
   const pocet=+d.pocet_jizd;
   const lo=Math.round(d.castka_od/(2*rate)),hi=Math.floor(d.castka_do/(2*rate));
-  const rng=mulberry32(strHash(name+"|"+y+"|"+m));
+  const rng=mulberry32((seedOverride!=null)?seedOverride:strHash(name+"|"+y+"|"+m));
   const vyb=pickDest(d.cile,pocet,lo,hi,rng);
   const vac=vacSet(d.dovolena);
   let datumy=pickDates(y,m,vyb.length,vac,rng);
@@ -410,14 +410,22 @@ function genCards(){const mk=curMonth();const box=document.getElementById('genCa
  if(!mk){box.innerHTML='';return;}const[y,m]=mk.split('-').map(Number);
  document.getElementById('genSub').textContent='Náhled vychází ze stálého nastavení a případné výjimky pro tento měsíc.';
  let h='';for(const[nm,d]of Object.entries(NAST.ridici)){const ov=(VYJ[mk]||{})[nm]||null;
-  let res;try{res=genForDriver(nm,d,y,m,ov,SZ);}catch(e){h+=`<div class="gen-card"><div class="who"><div class="nm">${nm}</div><div class="meta" style="color:var(--danger)">Chybí cíle/částky — doplň v Řidiči</div></div></div>`;continue;}
+  let res;try{res=genForDriver(nm,d,y,m,ov,SZ,seedFor(nm,mk));}catch(e){h+=`<div class="gen-card"><div class="who"><div class="nm">${nm}</div><div class="meta" style="color:var(--danger)">Chybí cíle/částky — doplň v Řidiči</div></div></div>`;continue;}
   h+=`<div class="gen-card"><div class="avatar" style="background:${avc(nm)}">${initials(nm)}</div>
     <div class="who"><div class="nm">${nm}</div><div class="meta">${res.trips.length} jízd${ov?' • výjimka':''}</div></div>
     <div class="nums"><div class="kc">${kc(res.celkem)} Kč</div><div class="meta">${res.celkem_km} km</div></div>
-    <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button><button class="btn ghost sm" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button></div></div>`;}
+    <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button><button class="btn ghost sm" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button><button class="btn ghost sm" title="Vylosovat jiné cíle" onclick="regenOne('${encodeURIComponent(nm)}')">🎲 Přegenerovat</button></div></div>`;}
  box.innerHTML=h;}
+function seedFor(nm,mk){return (NAST.seeds&&NAST.seeds[nm+'|'+mk]!=null)?NAST.seeds[nm+'|'+mk]:null;}
+function regenOne(nm){nm=dec(nm);const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
+ if(!NAST.seeds)NAST.seeds={};NAST.seeds[nm+'|'+mk]=Math.floor(Math.random()*2147483647);
+ genCards();scheduleSave();toast('Vylosováno znovu: '+nm+'.');}
+function regenAll(){const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
+ const names=Object.keys(NAST.ridici);if(!names.length){toast('Žádní řidiči.');return;}
+ if(!NAST.seeds)NAST.seeds={};for(const nm of names)NAST.seeds[nm+'|'+mk]=Math.floor(Math.random()*2147483647);
+ genCards();scheduleSave();toast('Vylosováno znovu pro všechny ('+mk+').');}
 function preview(nm){nm=dec(nm);const mk=curMonth();const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
- const res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ);const obdobi=MESICE[m]+' '+y;
+ const res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));const obdobi=MESICE[m]+' '+y;
  document.getElementById('printRoot').innerHTML=a4Html(NAST.firma,nm,res,obdobi,NAST.ucel_cesty||"Pracovní jednání",NAST.prac_doba||"",SZ.zakladni);
  setTimeout(()=>window.print(),60);}
 
@@ -455,14 +463,14 @@ async function loadHist(){if(!CURRENT_UID){HIST=[];return;}
   if(error){console.error(error);return;}HIST=(data||[]).slice();}
 async function saveToHist(nm){nm=dec(nm);const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
   if(!NAST.ridici[nm])return;const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
-  let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ);}catch(e){toast('Nelze uložit — doplň cíle/částky řidiče.');return;}
+  let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));}catch(e){toast('Nelze uložit — doplň cíle/částky řidiče.');return;}
   const snap=histSnap(nm,mk,y,m,res);const isNew=!HIST.some(h=>h.id===snap.id);
   setSync('busy','Ukládám…');const ok=await dbUpsertHist([snap]);
   if(ok){localUpsertHist(snap);fillHistFilter();renderHist();setSync('ok','Uloženo ✓');toast((isNew?'Uloženo do historie: ':'Aktualizováno v historii: ')+nm+'.');}else setSync('err','Chyba');}
 async function saveAllToHist(){const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
   const names=Object.keys(NAST.ridici);if(!names.length){toast('Žádní řidiči.');return;}
   const[y,m]=mk.split('-').map(Number);const snaps=[];
-  for(const nm of names){const ov=(VYJ[mk]||{})[nm]||null;let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ);}catch(e){continue;}snaps.push(histSnap(nm,mk,y,m,res));}
+  for(const nm of names){const ov=(VYJ[mk]||{})[nm]||null;let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));}catch(e){continue;}snaps.push(histSnap(nm,mk,y,m,res));}
   if(!snaps.length){toast('Nic k uložení.');return;}
   setSync('busy','Ukládám…');const ok=await dbUpsertHist(snaps);
   if(ok){snaps.forEach(localUpsertHist);fillHistFilter();renderHist();setSync('ok','Uloženo ✓');toast(snaps.length+' příkazů uloženo do historie ('+MESICE[m]+' '+y+').');}else setSync('err','Chyba');}

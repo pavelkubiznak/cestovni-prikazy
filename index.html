@@ -90,6 +90,19 @@ details.adv[open]>summary:before{content:"\25BE ";}
 .hist-trip b{color:var(--ink);font-weight:600;min-width:150px;}
 .hist-trip .km{color:var(--brand-d);font-weight:600;}
 .hist-card .badge.brand{font-size:13px;}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;max-width:360px;margin-top:8px;}
+.cal .wd{font-size:10.5px;color:var(--faint);text-align:center;font-weight:700;padding:2px 0;letter-spacing:.02em;}
+.cal .day{aspect-ratio:1;border:1px solid var(--line);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;background:var(--surface);user-select:none;transition:background .1s,border-color .1s,color .1s;font-weight:550;}
+.cal .day:hover{border-color:var(--brand);background:var(--brand-tint);}
+.cal .day.off{background:var(--surface-2);color:var(--faint);cursor:default;border-style:dashed;font-weight:500;}
+.cal .day.off:hover{border-color:var(--line);background:var(--surface-2);}
+.cal .day.vac{background:var(--warn-tint);border-color:#e7c878;color:#6b4e09;font-weight:700;}
+.cal .day.vac:hover{background:#f6ead0;border-color:#dcb85f;}
+.cal .day.empty{border:0;background:transparent;cursor:default;}
+.cal-legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:9px;font-size:11.5px;color:var(--muted);}
+.cal-legend span{display:inline-flex;align-items:center;gap:5px;}
+.cal-legend i{width:13px;height:13px;border-radius:4px;display:inline-block;border:1px solid var(--line);}
+.cal-legend i.iv{background:var(--warn-tint);border-color:#e7c878;} .cal-legend i.io{background:var(--surface-2);border-style:dashed;}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
 .chip2{display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:5px 7px 5px 13px;font-size:12.5px;}
 .chip2 b{color:var(--brand-d);font-weight:600;}
@@ -221,9 +234,10 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
       <div class="fld"><label>Částka od (Kč)</label><input type="number" id="vOd" class="w-md" placeholder="—"></div>
       <div class="fld"><label>Částka do (Kč)</label><input type="number" id="vDo" class="w-md" placeholder="—"></div>
     </div>
-    <div class="fld" style="margin-top:10px"><label>Dovolená / nepřítomnost (v tyto dny řidič nejede)</label>
-      <div id="dovWrap"></div>
-      <div><button class="btn soft sm" type="button" onclick="addDov()">+ přidat rozsah</button></div>
+    <div class="fld" style="margin-top:10px"><label>Dovolená / nepřítomnost — klikni na dny, kdy řidič nejede</label>
+      <div class="hint" style="margin-bottom:2px">Víkendy a státní svátky jsou už odečtené automaticky. Klikni na pracovní dny dovolené.</div>
+      <div id="calWrap" class="cal"></div>
+      <div class="cal-legend"><span><i class="iv"></i> dovolená (klik)</span><span><i class="io"></i> víkend / svátek (automaticky)</span></div>
     </div><hr class="row-sep">
     <button class="btn primary" type="button" onclick="saveVyj()">Uložit výjimku</button>
     <button class="btn danger" type="button" onclick="clearVyj()">Zrušit pro tento měsíc</button>
@@ -273,6 +287,7 @@ const SAZBY={"2026": {"zakladni": 5.9, "natural95": 34.7, "natural98": 39.0, "na
 function defaultNast(){return {firma:"Sintera Czech s.r.o.", email_ucetni:"", ucel_cesty:"Pracovní jednání", prac_doba:"od 9:00 - 17:30", sazby_dle_roku:JSON.parse(JSON.stringify(SAZBY)), ridici:{}, seeds:{}};}
 let NAST=defaultNast();
 let VYJ={};
+let vacDays=new Set();   // vyklikané dny dovolené pro aktuální měsíc+řidič ve Výjimkách
 
 const ROK=+Object.keys(SAZBY)[0]; const SZ=SAZBY[ROK];
 const AV=["#2f54eb","#0c8a4a","#b9770a","#7c3aed","#0891b2","#be185d"];
@@ -287,7 +302,7 @@ function shuffle(arr,rng){for(let i=arr.length-1;i>0;i--){const j=Math.floor(rng
 function easter(y){const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;return new Date(y,mo-1,da);}
 function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function holidaySet(y){const s=new Set([`${y}-01-01`,`${y}-05-01`,`${y}-05-08`,`${y}-07-05`,`${y}-07-06`,`${y}-09-28`,`${y}-10-28`,`${y}-11-17`,`${y}-12-24`,`${y}-12-25`,`${y}-12-26`]);const e=easter(y);const gp=new Date(e);gp.setDate(e.getDate()-2);const em=new Date(e);em.setDate(e.getDate()+1);s.add(iso(gp));s.add(iso(em));return s;}
-function vacSet(ranges){const s=new Set();(ranges||[]).forEach(r=>{let a=new Date(r[0]),b=new Date(r[1]);for(let d=new Date(a);d<=b;d.setDate(d.getDate()+1))s.add(iso(d));});return s;}
+function vacSet(ranges){const s=new Set();(ranges||[]).forEach(r=>{if(typeof r==='string'){s.add(r);return;}let a=new Date(r[0]),b=new Date(r[1]);for(let d=new Date(a);d<=b;d.setDate(d.getDate()+1))s.add(iso(d));});return s;}
 function workdays(y,m,vac){const hol=holidaySet(y);const out=[];const d=new Date(y,m-1,1);while(d.getMonth()===m-1){const w=d.getDay();const k=iso(d);if(w!==0&&w!==6&&!hol.has(k)&&!vac.has(k))out.push(new Date(d));d.setDate(d.getDate()+1);}return out;}
 function pickDates(y,m,n,vac,rng){const dny=workdays(y,m,vac);if(dny.length<=n)return dny;const out=[];for(let i=0;i<n;i++){const lo=Math.floor(i*dny.length/n),hi=Math.floor((i+1)*dny.length/n);let usek=dny.slice(lo,hi);if(!usek.length)usek=[dny[lo]];out.push(usek[Math.floor(rng()*usek.length)]);}return out.sort((a,b)=>a-b);}
 function avgSpotreba(d){return (d.spotreba.mesto+d.spotreba.mimo+d.spotreba.kombi)/3;}
@@ -431,14 +446,26 @@ function preview(nm){nm=dec(nm);const mk=curMonth();const[y,m]=mk.split('-').map
 
 // výjimky
 function fillDrivers(){document.getElementById('vDriver').innerHTML=Object.keys(NAST.ridici).map(j=>`<option>${j}</option>`).join('');}
-function addDov(a='',b=''){const w=document.getElementById('dovWrap');const r=document.createElement('div');r.className='dov-row';
- r.innerHTML=`<span class="small muted">od</span><input type="date" value="${a}"><span class="small muted">do</span><input type="date" value="${b}"><button class="btn danger sm" type="button" onclick="this.parentNode.remove()">×</button>`;w.appendChild(r);}
+function renderVacCalendar(){const box=document.getElementById('calWrap');if(!box)return;
+ const mk=document.getElementById('vMonth').value;if(!mk){box.innerHTML='';return;}
+ const[y,m]=mk.split('-').map(Number);const hol=holidaySet(y);
+ const startCol=(new Date(y,m-1,1).getDay()+6)%7;const dim=new Date(y,m,0).getDate();
+ const wd=['Po','Út','St','Čt','Pá','So','Ne'];
+ let h=wd.map(w=>`<div class="wd">${w}</div>`).join('');
+ for(let i=0;i<startCol;i++)h+='<div class="day empty"></div>';
+ for(let dd=1;dd<=dim;dd++){const date=new Date(y,m-1,dd);const k=iso(date);const dow=date.getDay();
+  const off=(dow===0||dow===6)||hol.has(k);const vac=vacDays.has(k);
+  const cls='day'+(off?' off':'')+(vac&&!off?' vac':'');
+  const tt=hol.has(k)?'státní svátek':((dow===0||dow===6)?'víkend':'');
+  h+=`<div class="${cls}" ${off?'':`onclick="toggleVac('${k}')"`} title="${tt}">${dd}</div>`;}
+ box.innerHTML=h;}
+function toggleVac(k){if(vacDays.has(k))vacDays.delete(k);else vacDays.add(k);renderVacCalendar();}
 function loadVyj(){const mk=document.getElementById('vMonth').value,jm=document.getElementById('vDriver').value;const v=((VYJ[mk]||{})[jm])||{};
  document.getElementById('vPocet').value=v.pocet_jizd||'';document.getElementById('vOd').value=v.castka_od||'';document.getElementById('vDo').value=v.castka_do||'';
- document.getElementById('dovWrap').innerHTML='';(v.dovolena||[]).forEach(r=>addDov(r[0],r[1]));chips();}
+ vacDays=vacSet(v.dovolena);renderVacCalendar();chips();}
 function saveVyj(){const mk=document.getElementById('vMonth').value,jm=document.getElementById('vDriver').value;if(!mk){toast('Vyber měsíc.');return;}if(!jm){toast('Vyber řidiče.');return;}
  const o={};const p=+document.getElementById('vPocet').value;if(p)o.pocet_jizd=p;const od=+document.getElementById('vOd').value;if(od)o.castka_od=od;const dd=+document.getElementById('vDo').value;if(dd)o.castka_do=dd;
- const dov=[...document.querySelectorAll('#dovWrap .dov-row')].map(r=>{const i=r.querySelectorAll('input');return[i[0].value,i[1].value];}).filter(x=>x[0]&&x[1]);if(dov.length)o.dovolena=dov;
+ const dov=[...vacDays].sort();if(dov.length)o.dovolena=dov;
  VYJ[mk]=VYJ[mk]||{};VYJ[mk][jm]=o;chips();genCards();scheduleSave();toast('Výjimka uložena.');}
 function clearVyj(){const mk=document.getElementById('vMonth').value,jm=document.getElementById('vDriver').value;if(VYJ[mk]){delete VYJ[mk][jm];if(!Object.keys(VYJ[mk]).length)delete VYJ[mk];}loadVyj();genCards();scheduleSave();toast('Výjimka zrušena.');}
 function chips(){let h='';for(const[mk,obj]of Object.entries(VYJ)){if(mk[0]==='_')continue;for(const[jm,v]of Object.entries(obj)){

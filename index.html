@@ -90,6 +90,10 @@ details.adv[open]>summary:before{content:"\25BE ";}
 .hist-trip b{color:var(--ink);font-weight:600;min-width:150px;}
 .hist-trip .km{color:var(--brand-d);font-weight:600;}
 .hist-card .badge.brand{font-size:13px;}
+.hist-inc{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;}
+.hist-inc input{width:15px;height:15px;cursor:pointer;}
+.hist-card.excl{opacity:.5;}
+#histSummary .h2t{font-size:17px;font-weight:680;letter-spacing:-.01em;margin:0;}
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;max-width:360px;margin-top:8px;}
 .cal .wd{font-size:10.5px;color:var(--faint);text-align:center;font-weight:700;padding:2px 0;letter-spacing:.02em;}
 .cal .day{aspect-ratio:1;border:1px solid var(--line);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:13px;cursor:pointer;background:var(--surface);user-select:none;transition:background .1s,border-color .1s,color .1s;font-weight:550;}
@@ -252,10 +256,14 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
 
 <section id="vDor" style="display:none">
   <h2 class="sec">Doručení účetní</h2>
-  <p class="lead">E‑mail účetní, kam posíláš hotové cestovní příkazy. Uloží se spolu s ostatním nastavením do tvého účtu.</p>
-  <div class="card"><div class="grid">
-    <div class="fld w-xl"><label>E‑mail účetní</label><input type="email" id="email" class="w-full" placeholder="ucetni@firma.cz">
-      <span class="hint">Použije se jako poznámka — odeslání e‑mailu probíhá z tvého e‑mailového klienta s přiloženým PDF.</span></div>
+  <p class="lead">E‑maily účetní (nebo více příjemců), kam posíláš hotové cestovní příkazy. Uloží se do tvého účtu a sdílí s týmem.</p>
+  <div class="card">
+    <label style="font-size:11.5px;color:var(--muted);font-weight:600;">Adresy příjemců</label>
+    <div id="emailList" style="margin-top:6px"></div>
+    <div style="margin-top:6px"><button class="btn soft sm" type="button" onclick="addEmail()">+ přidat adresu</button></div>
+    <hr class="row-sep">
+    <button class="btn ghost sm" type="button" onclick="composeEmail()">✉️ Otevřít e‑mail všem příjemcům</button>
+    <span class="hint" style="display:block;margin-top:8px">Otevře tvého e‑mailového klienta s předvyplněnými všemi adresami. PDF příkazů přiložíš ručně.</span>
   </div></div>
   <div class="note blue"><span class="i">i</span><div>Veškeré nastavení i výjimky se ukládají do cloudu k tvému účtu, takže je máš stejné na notebooku i v mobilu. Přihlašuješ se e‑mailem a heslem.</div></div>
 </section>
@@ -267,6 +275,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
     <div class="fld"><label>Filtr řidiče</label><select id="histFilter" class="w-xl" onchange="renderHist()"></select></div>
     <div class="fld" style="flex:1"><span class="small muted" id="histSub"></span></div>
   </div></div>
+  <div class="card" id="histSummary" style="display:none"></div>
   <div id="histList"></div>
 </section>
 </div>
@@ -289,10 +298,11 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
 const SAZBY={"2026": {"zakladni": 5.9, "natural95": 34.7, "natural98": 39.0, "nafta": 34.1}};
 
 /* ====== Default settings (NO personal data — drivers are loaded from the cloud) ====== */
-function defaultNast(){return {firma:"Sintera Czech s.r.o.", email_ucetni:"", ucel_cesty:"Pracovní jednání", prac_doba:"od 9:00 - 17:30", sazby_dle_roku:JSON.parse(JSON.stringify(SAZBY)), ridici:{}, seeds:{}};}
+function defaultNast(){return {firma:"Sintera Czech s.r.o.", email_ucetni:"", ucel_cesty:"Pracovní jednání", prac_doba:"od 9:00 - 17:30", sazby_dle_roku:JSON.parse(JSON.stringify(SAZBY)), ridici:{}, seeds:{}, emaily:[]};}
 let NAST=defaultNast();
 let VYJ={};
 let vacDays=new Set();   // vyklikané dny dovolené pro aktuální měsíc+řidič ve Výjimkách
+let histExcluded=new Set();   // záznamy historie vyřazené ze součtu (jen pohled, neukládá se)
 
 const ROK=+Object.keys(SAZBY)[0]; const SZ=SAZBY[ROK];
 const AV=["#2f54eb","#0c8a4a","#b9770a","#7c3aed","#0891b2","#be185d"];
@@ -524,17 +534,29 @@ function renderHist(){const box=document.getElementById('histList');if(!box)retu
   if(fv&&fv!=='__all')list=list.filter(h=>h.ridic===fv);
   list.sort((a,b)=>(b.mk||'').localeCompare(a.mk||'')||(a.ridic||'').localeCompare(b.ridic||''));
   const sub=document.getElementById('histSub');if(sub){const tot=HIST.length;sub.textContent=tot?(tot+' záznamů celkem'):'';}
+  renderHistSummary(list);
   if(!list.length){box.innerHTML='<div class="empty">Zatím nic v historii. V záložce <b>Generovat</b> ulož příkaz tlačítkem „Do historie“.</div>';return;}
-  box.innerHTML=list.map(h=>{const r=h.data&&h.data.res?h.data.res:{trips:[],celkem:0,celkem_km:0};
+  box.innerHTML=list.map(h=>{const r=h.data&&h.data.res?h.data.res:{trips:[],celkem:0,celkem_km:0};const excl=histExcluded.has(h.id);
     const dt=new Date(h.vytvoreno);const dts=isNaN(dt.getTime())?'':(dt.getDate()+'. '+(dt.getMonth()+1)+'. '+dt.getFullYear());
     const trips=(r.trips||[]).map(t=>`<div class="hist-trip"><span class="dt">${t.datum}</span><b>${t.dest}</b><span class="km">${t.km} km</span></div>`).join('');
-    return `<div class="card hist-card"><div class="dh"><div class="avatar" style="background:${avc(h.ridic)}">${initials(h.ridic)}</div>
+    return `<div class="card hist-card${excl?' excl':''}"><div class="dh"><div class="avatar" style="background:${avc(h.ridic)}">${initials(h.ridic)}</div>
       <div><div class="nm">${h.ridic}</div><div class="sub">${h.obdobi} • ${(r.trips||[]).length} jízd${dts?' • uloženo '+dts:''}</div></div>
       <div class="badge brand">${kc(r.celkem)} Kč</div></div>
       <details class="adv"><summary>Kam jel — ${r.celkem_km} km celkem</summary><div class="hist-trips">${trips}</div></details>
-      <div style="margin-top:10px;display:flex;gap:8px"><button class="btn soft sm" onclick="printHist('${encodeURIComponent(h.id)}')">Tisk / PDF</button>
+      <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label class="hist-inc"><input type="checkbox" ${excl?'':'checked'} onclick="toggleHistInc('${encodeURIComponent(h.id)}')"> do součtu</label>
+      <button class="btn soft sm" onclick="printHist('${encodeURIComponent(h.id)}')">Tisk / PDF</button>
       <button class="btn danger sm" onclick="delHist('${encodeURIComponent(h.id)}')">Smazat</button></div></div>`;
   }).join('');}
+function renderHistSummary(list){const box=document.getElementById('histSummary');if(!box)return;
+  if(!list||!list.length){box.style.display='none';return;}
+  box.style.display='';
+  const amt=h=>(h.data&&h.data.res?h.data.res.celkem:0)||0;
+  const inc=list.filter(h=>!histExcluded.has(h.id));
+  const total=inc.reduce((a,h)=>a+amt(h),0);
+  const per={};inc.forEach(h=>{per[h.ridic]=(per[h.ridic]||0)+amt(h);});
+  const chips=Object.entries(per).sort((a,b)=>b[1]-a[1]).map(([nm,v])=>`<span class="chip2"><b>${nm}</b> ${kc(v)} Kč</span>`).join('');
+  box.innerHTML=`<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><p class="h2t">Vyplaceno celkem: ${kc(total)} Kč</p><span class="small muted">${inc.length} z ${list.length} příkazů zahrnuto do součtu</span></div><div class="chips" style="margin-top:10px">${chips||'<span class="small muted">Nic zahrnuto — zaškrtni příkazy níže.</span>'}</div>`;}
+function toggleHistInc(id){id=dec(id);if(histExcluded.has(id))histExcluded.delete(id);else histExcluded.add(id);renderHist();}
 
 /* ====== Cloud (Supabase) ====== */
 const TABLE='cp_shared';      // sdílená týmová data (jedna sada pro všechny přihlášené)
@@ -642,16 +664,24 @@ function onRemoteShared(row){
  reRender();applyingRemote=false;setSync('ok','Aktualizováno (tým)');
 }
 function reRender(){
- document.getElementById('email').value=NAST.email_ucetni||'';
+ migrateEmails();renderEmails();
  ridCards();fillDrivers();loadVyj();genCards();chips();updChip();fillHistFilter();renderHist();
 }
+function migrateEmails(){if(!Array.isArray(NAST.emaily))NAST.emaily=[];if(!NAST.emaily.length&&NAST.email_ucetni)NAST.emaily=[NAST.email_ucetni];}
+function renderEmails(){const box=document.getElementById('emailList');if(!box)return;
+ if(!Array.isArray(NAST.emaily)||!NAST.emaily.length)NAST.emaily=[''];
+ box.innerHTML=NAST.emaily.map((e,i)=>`<div class="dov-row"><input type="email" class="w-xl" value="${(e||'').replace(/"/g,'&quot;')}" placeholder="ucetni@firma.cz" oninput="setEmail(${i},this.value)"><button class="btn danger sm" type="button" onclick="removeEmail(${i})">×</button></div>`).join('');}
+function setEmail(i,v){NAST.emaily[i]=v.trim();scheduleSave();}
+function addEmail(){if(!Array.isArray(NAST.emaily))NAST.emaily=[];NAST.emaily.push('');renderEmails();}
+function removeEmail(i){NAST.emaily.splice(i,1);if(!NAST.emaily.length)NAST.emaily=[''];renderEmails();scheduleSave();}
+function composeEmail(){const to=(NAST.emaily||[]).map(e=>(e||'').trim()).filter(Boolean);if(!to.length){toast('Přidej aspoň jednu adresu.');return;}
+ const mk=curMonth();window.location.href='mailto:'+to.join(',')+'?subject='+encodeURIComponent('Cestovní příkazy '+(mk||''));}
 function updChip(){const n=Object.keys(NAST.ridici).length;document.getElementById('chipInfo').textContent=n+' '+(n===1?'řidič':(n>=2&&n<=4?'řidiči':'řidičů'));}
 
 function scheduleSave(){if(!CURRENT_UID||applyingRemote)return;setSync('busy','Ukládám…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveCloud(false),900);}
 async function saveCloud(manual){
  if(!CURRENT_UID){if(manual)toast('Nejsi přihlášený.');return;}
  clearTimeout(saveTimer);saveTimer=null;
- NAST.email_ucetni=document.getElementById('email').value||NAST.email_ucetni;
  const stamp=new Date().toISOString();
  setSync('busy','Ukládám…');
  try{

@@ -744,14 +744,20 @@ function importBackup(){const inp=document.createElement('input');inp.type='file
 /* ====== Odeslání účetní (PDF přílohy přes edge funkci + Resend) ====== */
 const SEND_FN_URL=(window.__SB&&window.__SB.url?window.__SB.url:'')+'/functions/v1/send-prikazy';
 function blobToB64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(blob);});}
+function pdfOverlay(msg){let o=document.getElementById('pdfOverlay');
+ if(msg===false){if(o)o.remove();return;}
+ if(!o){o=document.createElement('div');o.id='pdfOverlay';o.style.cssText='position:fixed;inset:0;background:rgba(238,242,248,.97);z-index:2147483600;display:flex;align-items:center;justify-content:center;font-family:var(--f);font-size:16px;color:#14161a;font-weight:600;text-align:center;padding:20px;';document.body.appendChild(o);}
+ o.textContent=msg||'Generuji PDF…';}
 async function genPdfBlob(nm,res,obdobi){
  const inner=a4Html(NAST.firma,nm,res,obdobi,NAST.ucel_cesty||'Pracovní jednání',NAST.prac_doba||'',SZ.zakladni);
  const wrap=document.createElement('div');
- wrap.style.cssText='position:fixed;left:-9999px;top:0;width:194mm;background:#fff;';
+ // renderovat NA obrazovce (jinak html2canvas vykreslí prázdno) — překryje to overlay „Generuji…"
+ wrap.style.cssText='position:fixed;left:0;top:0;width:210mm;background:#fff;color:#000;z-index:2147483000;';
  wrap.innerHTML=inner;document.body.appendChild(wrap);
  try{
+  await new Promise(r=>setTimeout(r,80)); // nech doběhnout layout
   const opt={margin:[8,8,8,8],filename:nm+'.pdf',image:{type:'jpeg',quality:0.98},
-   html2canvas:{scale:2,backgroundColor:'#ffffff',useCORS:true},
+   html2canvas:{scale:2,backgroundColor:'#ffffff',useCORS:true,scrollX:0,scrollY:0,windowWidth:794},
    jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};
   return await html2pdf().set(opt).from(wrap).output('blob');
  } finally { wrap.remove(); }
@@ -763,16 +769,17 @@ async function sendToAccountant(){
  const names=Object.keys(NAST.ridici);if(!names.length){toast('Žádní řidiči.');return;}
  const[y,m]=mk.split('-').map(Number);const obdobi=MESICE[m]+' '+y;
  if(!confirm('Odeslat cestovní příkazy za '+obdobi+' na: '+to.join(', ')+' ?'))return;
- setSync('busy','Generuji PDF…');toast('Generuji PDF…');
+ pdfOverlay('Generuji PDF…');setSync('busy','Generuji PDF…');
  try{
-  const attachments=[];const rows=[];
-  for(const nm of names){const ov=(VYJ[mk]||{})[nm]||null;let res;
+  const attachments=[];const rows=[];let i=0;
+  for(const nm of names){i++;pdfOverlay('Generuji PDF '+i+'/'+names.length+' — '+nm+'…');
+   const ov=(VYJ[mk]||{})[nm]||null;let res;
    try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));}catch(e){continue;}
    const blob=await genPdfBlob(nm,res,obdobi);
    attachments.push({filename:'Cestovni_prikaz_'+nm.replace(/\s+/g,'_')+'_'+mk+'.pdf',content:await blobToB64(blob)});
    rows.push('<li>'+nm+' — '+kc(res.celkem)+' Kč</li>');}
   if(!attachments.length){setSync('err','Chyba');toast('Nic k odeslání (doplň cíle/částky).');return;}
-  setSync('busy','Odesílám…');
+  pdfOverlay('Odesílám e‑mail…');setSync('busy','Odesílám…');
   const session=(await sb.auth.getSession()).data.session;const utok=session&&session.access_token;
   const html='<p>Dobrý den,</p><p>v příloze cestovní příkazy za <b>'+obdobi+'</b>:</p><ul>'+rows.join('')+'</ul><p>S pozdravem,<br>'+NAST.firma+'</p>';
   const from=NAST.email_from||'Cestovní příkazy <onboarding@resend.dev>';
@@ -782,6 +789,7 @@ async function sendToAccountant(){
   if(!resp.ok){setSync('err','Chyba odeslání');toast('Chyba: '+(out.error||('HTTP '+resp.status)));console.error('send-prikazy',out);return;}
   setSync('ok','Odesláno ✓');toast('Odesláno účetní: '+attachments.length+' PDF na '+to.length+' adres.');
  }catch(e){console.error(e);setSync('err','Chyba');toast('Chyba: '+(e.message||e));}
+ finally{pdfOverlay(false);}
 }
 
 /* ====== Init ====== */

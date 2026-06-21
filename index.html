@@ -265,6 +265,11 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
     <button class="btn ghost sm" type="button" onclick="composeEmail()">✉️ Otevřít e‑mail všem příjemcům</button>
     <span class="hint" style="display:block;margin-top:8px">Otevře tvého e‑mailového klienta s předvyplněnými všemi adresami. PDF příkazů přiložíš ručně.</span>
   </div></div>
+  <div class="card" style="margin-top:14px">
+    <label style="font-size:11.5px;color:var(--muted);font-weight:600;">E‑mail zaměstnavatele (podpis za firmu)</label>
+    <div style="margin-top:6px"><input type="email" id="empEmail" class="w-xl" placeholder="jednatel@firma.cz" oninput="setEmployer(this.value)"></div>
+    <span class="hint" style="display:block;margin-top:6px">Použije se při e‑podpisu (PandaDoc) jako podpis za zaměstnavatele. Řidič podepisuje svým e‑mailem (v záložce Řidiči).</span>
+  </div>
   <div class="note blue"><span class="i">i</span><div>Veškeré nastavení i výjimky se ukládají do cloudu k tvému účtu, takže je máš stejné na notebooku i v mobilu. Přihlašuješ se e‑mailem a heslem.</div></div>
 </section>
 
@@ -392,6 +397,7 @@ function ridCards(){const ent=Object.entries(NAST.ridici);
    <div class="grid">
      <div class="fld"><label>Jméno řidiče</label><input class="w-xl" value="${(nm||'').replace(/"/g,'&quot;')}" onchange="renameRidic('${encodeURIComponent(nm)}',this.value)"></div>
      <div class="fld"><label>Bydliště</label><input class="w-xl" value="${(d.bydliste||'').replace(/"/g,'&quot;')}" oninput="setv('${encodeURIComponent(nm)}','bydliste',this.value)"></div>
+     <div class="fld"><label>E‑mail řidiče (pro e‑podpis)</label><input type="email" class="w-lg" value="${(d.email||'').replace(/"/g,'&quot;')}" placeholder="ridic@email.cz" oninput="setv('${encodeURIComponent(nm)}','email',this.value)"></div>
    </div>
    <div class="grid" style="margin-top:8px">
      <div class="fld"><label>Auto</label><input class="w-xl" value="${(d.auto||'').replace(/"/g,'&quot;')}" oninput="setv('${encodeURIComponent(nm)}','auto',this.value)"></div>
@@ -665,8 +671,10 @@ function onRemoteShared(row){
 }
 function reRender(){
  migrateEmails();renderEmails();
+ const ee=document.getElementById('empEmail');if(ee)ee.value=NAST.email_zamestnavatel||'';
  ridCards();fillDrivers();loadVyj();genCards();chips();updChip();fillHistFilter();renderHist();
 }
+function setEmployer(v){NAST.email_zamestnavatel=(v||'').trim();scheduleSave();}
 function migrateEmails(){if(!Array.isArray(NAST.emaily))NAST.emaily=[];if(!NAST.emaily.length&&NAST.email_ucetni)NAST.emaily=[NAST.email_ucetni];}
 function renderEmails(){const box=document.getElementById('emailList');if(!box)return;
  if(!Array.isArray(NAST.emaily)||!NAST.emaily.length)NAST.emaily=[''];

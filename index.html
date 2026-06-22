@@ -299,6 +299,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/pdfmake.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/vfs_fonts.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="config.js"></script>
 <script>
 /* ====== Rates (vyhláška) — not personal data, shipped with the app ====== */
@@ -822,29 +823,43 @@ async function sendToAccountant(){
  if(!to.length){toast('Přidej adresu příjemce v záložce Doručení.');return;}
  const names=Object.keys(NAST.ridici);if(!names.length){toast('Žádní řidiči.');return;}
  const[y,m]=mk.split('-').map(Number);const obdobi=MESICE[m]+' '+y;
- if(!confirm('Odeslat cestovní příkazy za '+obdobi+' na: '+to.join(', ')+' ?'))return;
+ if(!confirm('Připravit cestovní příkazy za '+obdobi+' a otevřít e‑mail pro: '+to.join(', ')+' ?\n(Vygeneruje PDF, stáhne ZIP a otevře tvůj e‑mail — přílohu přidáš.)'))return;
  pdfOverlay('Generuji PDF…');setSync('busy','Generuji PDF…');
  try{
-  const attachments=[];const rows=[];let i=0;
+  const attachments=[];const rows=[];const plain=[];let i=0;
   for(const nm of names){i++;pdfOverlay('Generuji PDF '+i+'/'+names.length+' — '+nm+'…');
    const ov=(VYJ[mk]||{})[nm]||null;let res;
    try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));}catch(e){continue;}
    const blob=await genPdfBlob(nm,res,obdobi);
    attachments.push({filename:'Cestovni_prikaz_'+nm.replace(/\s+/g,'_')+'_'+mk+'.pdf',content:await blobToB64(blob)});
-   rows.push('<li>'+nm+' — '+kc(res.celkem)+' Kč</li>');}
+   rows.push('<li>'+nm+' — '+kc(res.celkem)+' Kč</li>');plain.push(nm+': '+kc(res.celkem)+' Kč');}
   if(!attachments.length){setSync('err','Chyba');toast('Nic k odeslání (doplň cíle/částky).');return;}
-  pdfOverlay('Odesílám e‑mail…');setSync('busy','Odesílám…');
-  const session=(await sb.auth.getSession()).data.session;const utok=session&&session.access_token;
-  const html='<p>Dobrý den,</p><p>v příloze cestovní příkazy za <b>'+obdobi+'</b>:</p><ul>'+rows.join('')+'</ul><p>S pozdravem,<br>'+NAST.firma+'</p>';
-  const from=NAST.email_from||'Cestovní příkazy <cestovni-prikazy@sintera.cz>';
   const useN8N=!!(window.__SB&&window.__SB.n8nMail);
-  if(!useN8N){setSync('err','Není nastaveno');toast('Odesílání ještě není nastaveno (chybí n8n webhook). Kontaktuj správce.');return;}
-  const headers={'Authorization':'Bearer '+utok,'Content-Type':'application/json'};
-  const resp=await fetch(window.__SB.n8nMail,{method:'POST',headers,
-   body:JSON.stringify({from,to,subject:'Cestovní příkazy '+obdobi,html,attachments})});
-  const out=await resp.json().catch(()=>({}));
-  if(!resp.ok){setSync('err','Chyba odeslání');toast('Chyba: '+(out.error||('HTTP '+resp.status)));console.error('send-prikazy',out);return;}
-  setSync('ok','Odesláno ✓');toast('Odesláno účetní: '+attachments.length+' PDF na '+to.length+' adres.');
+  if(useN8N){
+   pdfOverlay('Odesílám e‑mail…');setSync('busy','Odesílám…');
+   const session=(await sb.auth.getSession()).data.session;const utok=session&&session.access_token;
+   const html='<p>Dobrý den,</p><p>v příloze cestovní příkazy za <b>'+obdobi+'</b>:</p><ul>'+rows.join('')+'</ul><p>S pozdravem,<br>'+NAST.firma+'</p>';
+   const from=NAST.email_from||'Cestovní příkazy <cestovni-prikazy@sintera.cz>';
+   const resp=await fetch(window.__SB.n8nMail,{method:'POST',headers:{'Authorization':'Bearer '+utok,'Content-Type':'application/json'},
+    body:JSON.stringify({from,to,subject:'Cestovní příkazy '+obdobi,html,attachments})});
+   const out=await resp.json().catch(()=>({}));
+   if(!resp.ok){setSync('err','Chyba odeslání');toast('Chyba: '+(out.error||('HTTP '+resp.status)));console.error(out);return;}
+   setSync('ok','Odesláno ✓');toast('Odesláno účetní: '+attachments.length+' PDF na '+to.length+' adres.');
+  }else{
+   // Bez backendu: zabal PDF do ZIPu, stáhni a otevři e‑mail (přílohu přidá uživatel).
+   pdfOverlay('Balím PDF do ZIPu…');setSync('busy','Balím…');
+   const zip=new JSZip();
+   attachments.forEach(a=>zip.file(a.filename,a.content,{base64:true}));
+   const zipBlob=await zip.generateAsync({type:'blob'});
+   const zipName='Cestovni_prikazy_'+mk+'.zip';
+   const al=document.createElement('a');al.href=URL.createObjectURL(zipBlob);al.download=zipName;document.body.appendChild(al);al.click();
+   setTimeout(()=>{URL.revokeObjectURL(al.href);al.remove();},6000);
+   const subj=encodeURIComponent('Cestovní příkazy '+obdobi);
+   const body=encodeURIComponent('Dobrý den,\n\nv příloze cestovní příkazy za '+obdobi+':\n'+plain.join('\n')+'\n\n(PDF jsou v přiloženém ZIPu „'+zipName+'" — přiložte ho prosím ze svých Stažených souborů.)\n\nS pozdravem,\n'+NAST.firma);
+   setSync('ok','Staženo ✓');
+   toast('Hotovo: PDF stažené jako '+zipName+'. Otevírám e‑mail — přiložte ten ZIP ze Stažených a odešlete.');
+   setTimeout(()=>{window.location.href='mailto:'+to.join(',')+'?subject='+subj+'&body='+body;},900);
+  }
  }catch(e){console.error(e);setSync('err','Chyba');toast('Chyba: '+(e.message||e));}
  finally{pdfOverlay(false);}
 }

@@ -836,8 +836,11 @@ async function sendToAccountant(){
   pdfOverlay('Odesílám e‑mail…');setSync('busy','Odesílám…');
   const session=(await sb.auth.getSession()).data.session;const utok=session&&session.access_token;
   const html='<p>Dobrý den,</p><p>v příloze cestovní příkazy za <b>'+obdobi+'</b>:</p><ul>'+rows.join('')+'</ul><p>S pozdravem,<br>'+NAST.firma+'</p>';
-  const from=NAST.email_from||'Cestovní příkazy <onboarding@resend.dev>';
-  const resp=await fetch(SEND_FN_URL,{method:'POST',headers:{'Authorization':'Bearer '+utok,'apikey':window.__SB.anon,'Content-Type':'application/json'},
+  const from=NAST.email_from||'Cestovní příkazy <cestovni-prikazy@sintera.cz>';
+  const useN8N=!!(window.__SB&&window.__SB.n8nMail);
+  if(!useN8N){setSync('err','Není nastaveno');toast('Odesílání ještě není nastaveno (chybí n8n webhook). Kontaktuj správce.');return;}
+  const headers={'Authorization':'Bearer '+utok,'Content-Type':'application/json'};
+  const resp=await fetch(window.__SB.n8nMail,{method:'POST',headers,
    body:JSON.stringify({from,to,subject:'Cestovní příkazy '+obdobi,html,attachments})});
   const out=await resp.json().catch(()=>({}));
   if(!resp.ok){setSync('err','Chyba odeslání');toast('Chyba: '+(out.error||('HTTP '+resp.status)));console.error('send-prikazy',out);return;}

@@ -1,0 +1,87 @@
+{
+  "name": "Cestovní příkazy – odeslání účetní",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cestovni-prikazy-mail",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "cestovni-prikazy-mail"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://tgwlzmrdirqrqtqgprod.supabase.co/auth/v1/user",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{ $json.headers.authorization }}" },
+            { "name": "apikey", "value": "sb_publishable_JqSGar-QkP6OC02bkZNQNw_1b0B1wpo" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-verify",
+      "name": "Ověř přihlášení",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $('Webhook').first().json.body || $('Webhook').first().json;\nconst atts = body.attachments || [];\nconst binary = {};\nconst names = [];\natts.forEach((a, i) => {\n  const k = 'att' + i;\n  binary[k] = { data: a.content, fileName: a.filename, mimeType: 'application/pdf' };\n  names.push(k);\n});\nconst to = Array.isArray(body.to) ? body.to.join(',') : (body.to || '');\nconst cc = Array.isArray(body.cc) ? body.cc.join(',') : (body.cc || '');\nreturn [{ json: { to, cc, subject: body.subject || 'Cestovní příkazy', html: body.html || '<p>V příloze.</p>', attNames: names.join(',') }, binary }];"
+      },
+      "id": "node-build",
+      "name": "Sestav e‑mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "cestovni-prikazy@sintera.cz",
+        "toEmail": "={{ $json.to }}",
+        "ccEmail": "={{ $json.cc }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {
+          "attachments": "={{ $json.attNames }}"
+        }
+      },
+      "id": "node-send",
+      "name": "Odeslat e‑mail (SMTP)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [880, 300],
+      "credentials": {
+        "smtp": { "id": "REPLACE_WITH_YOUR_SMTP_CREDENTIAL", "name": "SMTP sintera.cz" }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true }"
+      },
+      "id": "node-respond",
+      "name": "Odpověz appce",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1100, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Ověř přihlášení", "type": "main", "index": 0 }]] },
+    "Ověř přihlášení": { "main": [[{ "node": "Sestav e‑mail", "type": "main", "index": 0 }]] },
+    "Sestav e‑mail": { "main": [[{ "node": "Odeslat e‑mail (SMTP)", "type": "main", "index": 0 }]] },
+    "Odeslat e‑mail (SMTP)": { "main": [[{ "node": "Odpověz appce", "type": "main", "index": 0 }]] }
+  },
+  "settings": {}
+}

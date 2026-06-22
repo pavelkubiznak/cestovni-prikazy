@@ -3,7 +3,11 @@
 window.__SB = {
   url: "https://tgwlzmrdirqrqtqgprod.supabase.co",
   anon: "sb_publishable_JqSGar-QkP6OC02bkZNQNw_1b0B1wpo",
-  // n8n webhook pro odeslání e-mailu účetní (přes vlastní SMTP sintera.cz).
-  // Doplň produkční URL z n8n po importu a aktivaci workflow:
+  // Režim odesílání e-mailu účetní:
+  //   ""     = bez backendu → stáhne ZIP s PDF + otevře e-mail (přílohu přidá uživatel)
+  //   "edge" = jeden klik přes Supabase funkci send-prikazy (potřebuje nastaveného providera)
+  //   "n8n"  = přes vlastní n8n webhook (n8nMail níže)
+  sendMode: "",
+  // n8n webhook (jen když sendMode="n8n"):
   n8nMail: ""
 };

@@ -840,14 +840,17 @@ async function sendToAccountant(){
    attachments.push({filename:'Cestovni_prikaz_'+nm.replace(/\s+/g,'_')+'_'+mk+'.pdf',content:await blobToB64(blob)});
    rows.push('<li>'+nm+' — '+kc(res.celkem)+' Kč</li>');plain.push(nm+': '+kc(res.celkem)+' Kč');}
   if(!attachments.length){setSync('err','Chyba');toast('Nic k odeslání (doplň cíle/částky).');return;}
-  const useN8N=!!(window.__SB&&window.__SB.n8nMail);
-  if(useN8N){
+  const backend=(window.__SB&&window.__SB.sendMode)||((window.__SB&&window.__SB.n8nMail)?'n8n':'');
+  if(backend==='edge'||backend==='n8n'){
    pdfOverlay('Odesílám e‑mail…');setSync('busy','Odesílám…');
    const session=(await sb.auth.getSession()).data.session;const utok=session&&session.access_token;
    const html='<p>Dobrý den,</p><p>v příloze cestovní příkazy za <b>'+obdobi+'</b>:</p><ul>'+rows.join('')+'</ul><p>S pozdravem,<br>'+NAST.firma+'</p>';
    const from=NAST.email_from||'Cestovní příkazy <cestovni-prikazy@sintera.cz>';
-   const resp=await fetch(window.__SB.n8nMail,{method:'POST',headers:{'Authorization':'Bearer '+utok,'Content-Type':'application/json'},
-    body:JSON.stringify({from,to,subject:'Cestovní příkazy '+obdobi,html,attachments})});
+   const target=backend==='edge'?(window.__SB.url+'/functions/v1/send-prikazy'):window.__SB.n8nMail;
+   const headers={'Authorization':'Bearer '+utok,'Content-Type':'application/json'};
+   if(backend==='edge')headers['apikey']=window.__SB.anon;
+   const resp=await fetch(target,{method:'POST',headers,
+    body:JSON.stringify({from,to,cc:(NAST.email_cc||[]),subject:'Cestovní příkazy '+obdobi,html,attachments})});
    const out=await resp.json().catch(()=>({}));
    if(!resp.ok){setSync('err','Chyba odeslání');toast('Chyba: '+(out.error||('HTTP '+resp.status)));console.error(out);return;}
    setSync('ok','Odesláno ✓');toast('Odesláno účetní: '+attachments.length+' PDF na '+to.length+' adres.');

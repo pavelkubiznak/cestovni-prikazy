@@ -871,7 +871,7 @@ async function sendToAccountant(){
 }
 
 /* ====== Init ====== */
-function initMonths(){const now=new Date();const mk=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+function initMonths(){const now=new Date();const prev=new Date(now.getFullYear(),now.getMonth()-1,1);const mk=prev.getFullYear()+'-'+String(prev.getMonth()+1).padStart(2,'0');
  document.getElementById('genMonth').value=mk;document.getElementById('vMonth').value=mk;
  buildMonthPicker('genMonthPick','genMonth',genCards);
  buildMonthPicker('vMonthPick','vMonth',loadVyj);}

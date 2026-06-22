@@ -122,6 +122,11 @@ details.adv[open]>summary:before{content:"\25BE ";}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
 h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
 .muted{color:var(--muted);} .small{font-size:12.5px;}
+/* Zjednodušený režim (pro Šárku) — schová pokročilé prvky */
+body.simple #tRid, body.simple #tVyj, body.simple #tDor, body.simple #tHist, body.simple .adv-only{display:none !important;}
+body.simple #vGen .btn.primary.sm{font-size:14.5px;padding:11px 18px;}
+.modetoggle{font-size:11.5px;color:var(--brand-d);cursor:pointer;background:var(--surface-2);border:1px solid var(--line);font-family:var(--f);font-weight:600;padding:5px 11px;border-radius:999px;white-space:nowrap;}
+.modetoggle:hover{background:#e3e8fd;}
 
 /* ===== Auth gate ===== */
 .auth-gate{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(180deg,#eef2f8,#e7ebf3);}
@@ -197,7 +202,8 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
 <div class="appbar"><div class="brand-dot">S</div>
 <div class="titles"><h1>Cestovní příkazy</h1><p>SINTERA Czech s.r.o. — generování a evidence</p></div>
 <div class="sp"></div>
-<div class="chip" id="chipInfo">0 řidičů</div>
+<div class="chip adv-only" id="chipInfo">0 řidičů</div>
+<button class="modetoggle" id="modeToggle" onclick="toggleSimple()"></button>
 <span class="userchip" id="userChip"></span>
 <button class="logout" onclick="doLogout()">Odhlásit</button></div>
 
@@ -216,7 +222,7 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
   <div class="card"><div class="grid" style="align-items:flex-end">
     <div class="fld"><label>Měsíc</label><div id="genMonthPick" class="monthpick"></div><input type="hidden" id="genMonth"></div>
     <div class="fld" style="flex:1"><span class="small muted" id="genSub"></span></div>
-    <div class="fld" style="flex-direction:row;gap:8px;align-items:flex-end;flex-wrap:wrap"><button class="btn ghost sm" type="button" onclick="regenAll()">🎲 Přegenerovat vše</button><button class="btn ghost sm" type="button" onclick="saveAllToHist()">Uložit všechny do historie</button><button class="btn primary sm" type="button" onclick="sendToAccountant()">📧 Odeslat účetní</button></div>
+    <div class="fld" style="flex-direction:row;gap:8px;align-items:flex-end;flex-wrap:wrap"><button class="btn ghost sm adv-only" type="button" onclick="regenAll()">🎲 Přegenerovat vše</button><button class="btn ghost sm adv-only" type="button" onclick="saveAllToHist()">Uložit všechny do historie</button><button class="btn primary sm" type="button" onclick="sendToAccountant()">📧 Odeslat účetní</button></div>
   </div></div>
   <div class="cards" id="genCards"></div>
   <div class="note blue" style="margin-top:14px"><span class="i">i</span>
@@ -286,9 +292,9 @@ h2.sec{font-size:19px;margin:2px 0;font-weight:650;letter-spacing:-.02em;}
 </div>
 
 <div class="savebar">
-  <button class="btn primary" onclick="saveCloud(true)">Uložit do cloudu</button>
-  <button class="btn ghost" onclick="exportBackup()">Export zálohy</button>
-  <button class="btn ghost" onclick="importBackup()">Import zálohy…</button>
+  <button class="btn primary adv-only" onclick="saveCloud(true)">Uložit do cloudu</button>
+  <button class="btn ghost adv-only" onclick="exportBackup()">Export zálohy</button>
+  <button class="btn ghost adv-only" onclick="importBackup()">Import zálohy…</button>
   <span class="info" id="fsInfo"><span class="dot" id="syncDot"></span><span id="syncText">—</span></span>
 </div>
 </div><!-- /appMain -->
@@ -453,7 +459,7 @@ function genCards(){const mk=curMonth();const box=document.getElementById('genCa
   h+=`<div class="gen-card"><div class="avatar" style="background:${avc(nm)}">${initials(nm)}</div>
     <div class="who"><div class="nm">${nm}</div><div class="meta">${res.trips.length} jízd${ov?' • výjimka':''}${HIST.some(h=>h.id===nm+'|'+mk)?' • <span style="color:var(--ok)">✓ v historii</span>':''}</div></div>
     <div class="nums"><div class="kc">${kc(res.celkem)} Kč</div><div class="meta">${res.celkem_km} km</div></div>
-    <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button><button class="btn ghost sm" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button><button class="btn ghost sm" title="Vylosovat jiné cíle" onclick="regenOne('${encodeURIComponent(nm)}')">🎲 Přegenerovat</button></div></div>`;}
+    <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button><button class="btn ghost sm adv-only" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button><button class="btn ghost sm adv-only" title="Vylosovat jiné cíle" onclick="regenOne('${encodeURIComponent(nm)}')">🎲 Přegenerovat</button></div></div>`;}
  box.innerHTML=h;}
 function seedFor(nm,mk){return (NAST.seeds&&NAST.seeds[nm+'|'+mk]!=null)?NAST.seeds[nm+'|'+mk]:null;}
 function regenOne(nm){nm=dec(nm);const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
@@ -881,8 +887,12 @@ function wireAutosave(){const main=document.getElementById('appMain');
  document.getElementById('vDriver').addEventListener('change',loadVyj);
  document.getElementById('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')doAuth();});
  document.getElementById('authEmail').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('authPass').focus();});}
+function applySimpleMode(){const s=localStorage.getItem('cp_simple')!=='0';document.body.classList.toggle('simple',s);
+ const t=document.getElementById('modeToggle');if(t)t.textContent=s?'⚙ Zobrazit vše':'🙂 Zjednodušit';
+ if(s){const act=['Rid','Vyj','Dor','Hist'].find(x=>{const b=document.getElementById('t'+x);return b&&b.classList.contains('act');});if(act)tab('Gen');}}
+function toggleSimple(){const cur=localStorage.getItem('cp_simple')!=='0';localStorage.setItem('cp_simple',cur?'0':'1');applySimpleMode();}
 async function init(){
- initMonths();wireAutosave();
+ initMonths();wireAutosave();applySimpleMode();
  if(!window.supabase||!window.__SB||!window.__SB.url||!window.__SB.anon){
   document.getElementById('authGate').style.display='flex';
   authMsg('Chybí konfigurace připojení (config.js). Kontaktuj správce aplikace.','err');

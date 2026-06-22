@@ -754,7 +754,7 @@ function pdfOverlay(msg){let o=document.getElementById('pdfOverlay');
  if(!o){o=document.createElement('div');o.id='pdfOverlay';o.style.cssText='position:fixed;inset:0;background:rgba(238,242,248,.97);z-index:2147483600;display:flex;align-items:center;justify-content:center;font-family:var(--f);font-size:16px;color:#14161a;font-weight:600;text-align:center;padding:20px;';document.body.appendChild(o);}
  o.textContent=msg||'Generuji PDF…';}
 // Vektorové PDF z dat (pdfmake) — spolehlivé, nezávislé na vykreslení obrazovky.
-function pdfDocDef(firma,name,res,obdobi,ucel,pracDoba,zakladni){
+function pdfDocDef(firma,name,res,obdobi,ucel,pracDoba,zakladni,signMode){
  const d=res.d,trips=res.trips,rate=res.rate;
  const home=d.vychozi_bod,navrat=d.navratovy_bod;
  const palivo=PALIVO_NAZEV[d.palivo||'natural95'];
@@ -793,7 +793,12 @@ function pdfDocDef(firma,name,res,obdobi,ucel,pracDoba,zakladni){
    {table:{headerRows:1,widths:[40,28,80,28,26,32,42,44,30,32,46,22],body:vyBody},layout:'grid',margin:[0,4,0,0]},
    {columns:[{text:'',width:'*'},{text:[{text:'Celkem k proplacení:  '},{text:kc(res.celkem)+' Kč',bold:true,fontSize:10}],width:'auto'}],margin:[0,6,0,0]},
    {text:'Vozidlo: '+(d.auto||'')+' | SPZ '+(d.spz||'')+' | náhrada '+kc(rate)+' Kč/km (základní '+kc(zakladni)+' Kč/km + spotřeba '+res.avg.toFixed(2)+' l/100 km × '+kc(res.cena)+' Kč/l, '+palivo+', vyhláška '+vyhl+').',fontSize:7,color:'#333',margin:[0,4,0,0]},
-   sign3('','Datum a podpis pracovníka','')
+   signMode
+    ? {columns:[
+        {stack:[{text:'[signature:Signer1:podpis_ridic________________]',fontSize:9},{text:'Řidič (zaměstnanec) — datum a podpis',fontSize:7.5,alignment:'center',margin:[0,2,0,0]}],alignment:'center'},
+        {stack:[{text:'[signature:Signer2:podpis_zam_________________]',fontSize:9},{text:'Zaměstnavatel — datum a podpis',fontSize:7.5,alignment:'center',margin:[0,2,0,0]}],alignment:'center'}
+      ],columnGap:24,margin:[0,26,0,0]}
+    : sign3('','Datum a podpis pracovníka','')
   ],
   styles:{
    th:{bold:true,fontSize:7.5,fillColor:'#f1f1f1',alignment:'center'},

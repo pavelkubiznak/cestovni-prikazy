@@ -795,9 +795,9 @@ function pdfDocDef(firma,name,res,obdobi,ucel,pracDoba,zakladni,signMode){
    {text:'Vozidlo: '+(d.auto||'')+' | SPZ '+(d.spz||'')+' | náhrada '+kc(rate)+' Kč/km (základní '+kc(zakladni)+' Kč/km + spotřeba '+res.avg.toFixed(2)+' l/100 km × '+kc(res.cena)+' Kč/l, '+palivo+', vyhláška '+vyhl+').',fontSize:7,color:'#333',margin:[0,4,0,0]},
    signMode
     ? {columns:[
-        {stack:[{text:'[signature:Signer1:podpis_ridic________________]',fontSize:9},{text:'Řidič (zaměstnanec) — datum a podpis',fontSize:7.5,alignment:'center',margin:[0,2,0,0]}],alignment:'center'},
-        {stack:[{text:'[signature:Signer2:podpis_zam_________________]',fontSize:9},{text:'Zaměstnavatel — datum a podpis',fontSize:7.5,alignment:'center',margin:[0,2,0,0]}],alignment:'center'}
-      ],columnGap:24,margin:[0,26,0,0]}
+        {stack:[{text:'[s:Signer1:sigdrv____________]',fontSize:11,noWrap:true},{text:'Řidič (zaměstnanec) — datum a podpis',fontSize:7.5,alignment:'center',margin:[0,3,0,0]}],alignment:'center'},
+        {stack:[{text:'[s:Signer2:sigemp____________]',fontSize:11,noWrap:true},{text:'Zaměstnavatel — datum a podpis',fontSize:7.5,alignment:'center',margin:[0,3,0,0]}],alignment:'center'}
+      ],columnGap:30,margin:[0,28,0,0]}
     : sign3('','Datum a podpis pracovníka','')
   ],
   styles:{

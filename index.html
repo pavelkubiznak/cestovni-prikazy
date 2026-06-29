@@ -157,8 +157,16 @@ body.simple #vGen .btn.primary.sm{font-size:14.5px;padding:11px 18px;}
  .savebar .info{flex-basis:100%;margin-left:0;justify-content:center;order:-1;margin-bottom:2px;}
 }
 
+.prev-overlay{position:fixed;inset:0;background:rgba(20,22,26,.55);z-index:2147483500;display:flex;flex-direction:column;}
+.prev-bar{display:flex;gap:10px;align-items:center;justify-content:center;padding:11px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);}
+.prev-scroll{flex:1;overflow:auto;padding:22px 14px;display:flex;justify-content:center;align-items:flex-start;}
+.prev-scroll #printRoot{background:#fff;width:100%;max-width:900px;padding:16mm 13mm;box-shadow:0 12px 44px rgba(0,0,0,.34);border-radius:3px;}
 @media print{body *{visibility:hidden!important;}#printRoot,#printRoot *{visibility:visible!important;}
-#printRoot{position:absolute;left:0;top:0;width:100%;}@page{size:A4 portrait;margin:12mm 11mm;}}
+.prev-overlay{position:static!important;display:block!important;background:none!important;inset:auto!important;}
+.prev-bar{display:none!important;}
+.prev-scroll{display:block!important;overflow:visible!important;padding:0!important;}
+#printRoot{position:absolute;left:0;top:0;width:100%;max-width:none!important;padding:0!important;box-shadow:none!important;background:#fff!important;}
+@page{size:A4 portrait;margin:12mm 11mm;}}
 
 .a4{font-family:"Liberation Sans","DejaVu Sans",Arial,sans-serif;font-size:9.2pt;color:#000;background:#fff;}
 .a4 .title{font-family:"Liberation Serif","DejaVu Serif",serif;font-weight:bold;font-size:19pt;letter-spacing:6px;text-align:center;}
@@ -219,7 +227,7 @@ body.simple #vGen .btn.primary.sm{font-size:14.5px;padding:11px 18px;}
 
 <section id="vGen">
   <h2 class="sec">Generovat cestovní příkazy</h2>
-  <p class="lead">Vyber měsíc a zobraz náhled. Tlačítkem <b>Náhled &amp; tisk</b> otevřeš hotový list k vytištění nebo uložení do PDF (v dialogu tisku zvol „Uložit jako PDF“).</p>
+  <p class="lead">Vyber měsíc a zobraz náhled. Tlačítkem <b>👁 Náhled</b> si otevřeš hotový list k prohlédnutí; teprve když chceš tisknout nebo uložit PDF, klikni v náhledu nahoře na <b>🖨️ Tisk / uložit PDF</b>.</p>
   <div class="card"><div class="grid" style="align-items:flex-end">
     <div class="fld"><label>Měsíc</label><div id="genMonthPick" class="monthpick"></div><input type="hidden" id="genMonth"></div>
     <div class="fld" style="flex:1"><span class="small muted" id="genSub"></span></div>
@@ -300,7 +308,13 @@ body.simple #vGen .btn.primary.sm{font-size:14.5px;padding:11px 18px;}
 </div>
 </div><!-- /appMain -->
 
-<div id="printRoot"></div>
+<div id="previewOverlay" class="prev-overlay" style="display:none" onclick="if(event.target===this)closePreview()">
+ <div class="prev-bar">
+  <button class="btn primary sm" type="button" onclick="window.print()">🖨️ Tisk / uložit PDF</button>
+  <button class="btn ghost sm" type="button" onclick="closePreview()">Zavřít náhled</button>
+ </div>
+ <div class="prev-scroll"><div id="printRoot"></div></div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -471,7 +485,7 @@ function genCards(){const mk=curMonth();const box=document.getElementById('genCa
   h+=`<div class="gen-card"><div class="avatar" style="background:${avc(nm)}">${initials(nm)}</div>
     <div class="who"><div class="nm">${nm}</div><div class="meta">${res.trips.length} jízd${ov?' • výjimka':''}${HIST.some(h=>h.id===nm+'|'+mk)?' • <span style="color:var(--ok)">✓ v historii</span>':''}</div></div>
     <div class="nums"><div class="kc"${res.mimoInterval?' style="color:var(--danger)" title="Mimo zadaný interval"':''}>${kc(res.celkem)} Kč</div><div class="meta">${res.celkem_km} km</div></div>
-    <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button><button class="btn ghost sm adv-only" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button><button class="btn ghost sm adv-only" title="Vylosovat jiné cíle" onclick="regenOne('${encodeURIComponent(nm)}')">🎲 Přegenerovat</button></div>${res.mimoInterval?`
+    <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">👁 Náhled</button><button class="btn ghost sm adv-only" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button><button class="btn ghost sm adv-only" title="Vylosovat jiné cíle" onclick="regenOne('${encodeURIComponent(nm)}')">🎲 Přegenerovat</button></div>${res.mimoInterval?`
     <div class="gen-warn">⚠️ Částku se nepodařilo složit do intervalu <b>${kc0(res.d.castka_od)}–${kc0(res.d.castka_do)} Kč</b>. Z těchto cílů a <b>${res.trips.length} jízd</b> jde dosáhnout jen <b>${kc0(res.castkaMin)}–${kc0(res.castkaMax)} Kč</b>.${res.pocetDoporuceny&&res.pocetDoporuceny!==res.trips.length?` Zkus <b>${res.pocetDoporuceny} jízd</b> nebo uprav interval / cíle řidiče.`:` Uprav interval, počet jízd nebo cíle řidiče.`}</div>`:''}</div>`;}
  box.innerHTML=h;}
 function seedFor(nm,mk){return (NAST.seeds&&NAST.seeds[nm+'|'+mk]!=null)?NAST.seeds[nm+'|'+mk]:null;}
@@ -482,10 +496,12 @@ function regenAll(){const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
  const names=Object.keys(NAST.ridici);if(!names.length){toast('Žádní řidiči.');return;}
  if(!NAST.seeds)NAST.seeds={};for(const nm of names)NAST.seeds[nm+'|'+mk]=Math.floor(Math.random()*2147483647);
  genCards();scheduleSave();toast('Vylosováno znovu pro všechny ('+mk+').');}
+function showPreview(html){document.getElementById('printRoot').innerHTML=html;const ov=document.getElementById('previewOverlay');ov.style.display='flex';ov.querySelector('.prev-scroll').scrollTop=0;}
+function closePreview(){document.getElementById('previewOverlay').style.display='none';}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){const ov=document.getElementById('previewOverlay');if(ov&&ov.style.display==='flex')closePreview();}});
 function preview(nm){nm=dec(nm);const mk=curMonth();const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
  const res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));const obdobi=MESICE[m]+' '+y;
- document.getElementById('printRoot').innerHTML=a4Html(NAST.firma,nm,res,obdobi,NAST.ucel_cesty||"Pracovní jednání",NAST.prac_doba||"",SZ.zakladni);
- setTimeout(()=>window.print(),60);}
+ showPreview(a4Html(NAST.firma,nm,res,obdobi,NAST.ucel_cesty||"Pracovní jednání",NAST.prac_doba||"",SZ.zakladni));}
 
 // výjimky
 function fillDrivers(){document.getElementById('vDriver').innerHTML=Object.keys(NAST.ridici).map(j=>`<option>${j}</option>`).join('');}
@@ -549,8 +565,7 @@ async function saveAllToHist(){const mk=curMonth();if(!mk){toast('Vyber měsíc.
   setSync('busy','Ukládám…');const ok=await dbUpsertHist(snaps);
   if(ok){snaps.forEach(localUpsertHist);fillHistFilter();renderHist();setSync('ok','Uloženo ✓');toast(snaps.length+' příkazů uloženo do historie ('+MESICE[m]+' '+y+').');}else setSync('err','Chyba');}
 function printHist(id){id=dec(id);const h=HIST.find(x=>x.id===id);if(!h)return;
-  document.getElementById('printRoot').innerHTML=a4Html(h.data.firma,h.ridic,h.data.res,h.obdobi,h.data.ucel,h.data.prac,h.data.zakladni);
-  setTimeout(()=>window.print(),60);}
+  showPreview(a4Html(h.data.firma,h.ridic,h.data.res,h.obdobi,h.data.ucel,h.data.prac,h.data.zakladni));}
 async function delHist(id){id=dec(id);const h=HIST.find(x=>x.id===id);if(!h)return;
   if(!confirm('Smazat z historie: '+h.ridic+' — '+h.obdobi+'?'))return;
   const{error}=await sb.from(HTABLE).delete().eq('id',id);
@@ -576,7 +591,7 @@ function renderHist(){const box=document.getElementById('histList');if(!box)retu
       <div class="badge brand">${kc(r.celkem)} Kč</div></div>
       <details class="adv"><summary>Kam jel — ${r.celkem_km} km celkem</summary><div class="hist-trips">${trips}</div></details>
       <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label class="hist-inc"><input type="checkbox" ${excl?'':'checked'} onclick="toggleHistInc('${encodeURIComponent(h.id)}')"> do součtu</label>
-      <button class="btn soft sm" onclick="printHist('${encodeURIComponent(h.id)}')">Tisk / PDF</button>
+      <button class="btn soft sm" onclick="printHist('${encodeURIComponent(h.id)}')">👁 Náhled</button>
       <button class="btn danger sm" onclick="delHist('${encodeURIComponent(h.id)}')">Smazat</button></div></div>`;
   }).join('');}
 function renderHistSummary(list){const box=document.getElementById('histSummary');if(!box)return;

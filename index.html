@@ -72,7 +72,8 @@ details.adv[open]>summary:before{content:"\25BE ";}
 .savebar .info{font-size:12.5px;color:var(--faint);margin-left:auto;display:flex;align-items:center;gap:7px;}
 .savebar .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);}
 .savebar .dot.ok{background:var(--ok);} .savebar .dot.busy{background:var(--warn);} .savebar .dot.err{background:var(--danger);}
-.gen-card{display:flex;align-items:center;gap:14px;flex:1 1 460px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh);padding:15px 17px;transition:transform .14s,box-shadow .14s,border-color .14s;}
+.gen-card{display:flex;flex-wrap:wrap;align-items:center;gap:14px;flex:1 1 460px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh);padding:15px 17px;transition:transform .14s,box-shadow .14s,border-color .14s;}
+.gen-warn{flex:1 1 100%;margin-top:2px;padding:9px 12px;background:#fff4e5;border:1px solid #ffd9a0;border-radius:10px;color:#8a5200;font-size:12.5px;line-height:1.5;}
 .gen-card:hover{transform:translateY(-2px);border-color:#dfe3ea;box-shadow:0 1px 2px rgba(20,22,26,.04),0 10px 24px rgba(20,22,26,.09);}
 .gen-card .who{flex:1 1 auto;min-width:0;}
 .gen-card .nums{margin-left:auto;text-align:right;padding-left:10px;}
@@ -352,9 +353,20 @@ function genForDriver(name,base,y,m,override,sazby,seedOverride){
     return {datum:`${dt.getDate()}. ${dt.getMonth()+1}. ${dt.getFullYear()}`,dest:it[0],km:km,odj:tt[0],prij:tt[1],odj2:tt[2],prij2:tt[3]};});
   const celkem_km=trips.reduce((a,t)=>a+t.km*2,0);
   const celkem=Math.round(trips.reduce((a,t)=>a+Math.round(t.km*rate*100)/100*2,0)*100)/100;
-  return {d,rate,trips,celkem_km,celkem,avg:avgSpotreba(d),cena:sazby[d.palivo||"natural95"]};
+  // Padla částka do zadaného intervalu castka_od..castka_do? (po změně auta/spotřeby ji nemusí jít z daných cílů složit)
+  const kmAll=Object.values(d.cile||{}).map(Number).filter(x=>x>0).sort((a,b)=>a-b);
+  let mimoInterval=false,castkaMin=null,castkaMax=null,pocetDoporuceny=null;
+  if(kmAll.length){
+    const nn=Math.min(pocet,kmAll.length);
+    const sumLo=k=>kmAll.slice(0,k).reduce((a,b)=>a+b,0),sumHi=k=>kmAll.slice(-k).reduce((a,b)=>a+b,0);
+    castkaMin=Math.round(sumLo(nn)*2*rate);castkaMax=Math.round(sumHi(nn)*2*rate);
+    mimoInterval=celkem<d.castka_od-0.5||celkem>d.castka_do+0.5;
+    if(mimoInterval)for(let k=1;k<=kmAll.length;k++){if(sumHi(k)*2*rate>=d.castka_od&&sumLo(k)*2*rate<=d.castka_do){pocetDoporuceny=k;break;}}
+  }
+  return {d,rate,trips,celkem_km,celkem,avg:avgSpotreba(d),cena:sazby[d.palivo||"natural95"],mimoInterval,castkaMin,castkaMax,pocetDoporuceny};
 }
 function kc(x){return x.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g," ").replace(".",",");}
+function kc0(x){return Math.round(x||0).toLocaleString("cs-CZ");}
 // ===ENGINE END===
 
 function a4Html(firma,name,res,obdobi,ucel,pracDoba,zakladni){
@@ -458,8 +470,9 @@ function genCards(){const mk=curMonth();const box=document.getElementById('genCa
   let res;try{res=genForDriver(nm,d,y,m,ov,SZ,seedFor(nm,mk));}catch(e){h+=`<div class="gen-card"><div class="who"><div class="nm">${nm}</div><div class="meta" style="color:var(--danger)">Chybí cíle/částky — doplň v Řidiči</div></div></div>`;continue;}
   h+=`<div class="gen-card"><div class="avatar" style="background:${avc(nm)}">${initials(nm)}</div>
     <div class="who"><div class="nm">${nm}</div><div class="meta">${res.trips.length} jízd${ov?' • výjimka':''}${HIST.some(h=>h.id===nm+'|'+mk)?' • <span style="color:var(--ok)">✓ v historii</span>':''}</div></div>
-    <div class="nums"><div class="kc">${kc(res.celkem)} Kč</div><div class="meta">${res.celkem_km} km</div></div>
-    <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button><button class="btn ghost sm adv-only" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button><button class="btn ghost sm adv-only" title="Vylosovat jiné cíle" onclick="regenOne('${encodeURIComponent(nm)}')">🎲 Přegenerovat</button></div></div>`;}
+    <div class="nums"><div class="kc"${res.mimoInterval?' style="color:var(--danger)" title="Mimo zadaný interval"':''}>${kc(res.celkem)} Kč</div><div class="meta">${res.celkem_km} km</div></div>
+    <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">Náhled &amp; tisk</button><button class="btn ghost sm adv-only" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button><button class="btn ghost sm adv-only" title="Vylosovat jiné cíle" onclick="regenOne('${encodeURIComponent(nm)}')">🎲 Přegenerovat</button></div>${res.mimoInterval?`
+    <div class="gen-warn">⚠️ Částku se nepodařilo složit do intervalu <b>${kc0(res.d.castka_od)}–${kc0(res.d.castka_do)} Kč</b>. Z těchto cílů a <b>${res.trips.length} jízd</b> jde dosáhnout jen <b>${kc0(res.castkaMin)}–${kc0(res.castkaMax)} Kč</b>.${res.pocetDoporuceny&&res.pocetDoporuceny!==res.trips.length?` Zkus <b>${res.pocetDoporuceny} jízd</b> nebo uprav interval / cíle řidiče.`:` Uprav interval, počet jízd nebo cíle řidiče.`}</div>`:''}</div>`;}
  box.innerHTML=h;}
 function seedFor(nm,mk){return (NAST.seeds&&NAST.seeds[nm+'|'+mk]!=null)?NAST.seeds[nm+'|'+mk]:null;}
 function regenOne(nm){nm=dec(nm);const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}

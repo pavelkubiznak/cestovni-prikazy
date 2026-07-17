@@ -628,6 +628,7 @@ let HIST=[];                  // historie načtená z cp_historie
 let sharedVersion=null;       // updated_at poslední známé verze cp_shared (optimistický zámek)
 let rtChannel=null;           // Realtime kanál (živá synchronizace)
 let applyingRemote=false;     // probíhá aplikace vzdálené změny → nespouštět autosave
+let pendingRemote=null;       // vzdálená změna, která dorazila během editace → aplikovat po dopsání
 function setSync(state,text){const dot=document.getElementById('syncDot');const t=document.getElementById('syncText');
  dot.className='dot'+(state?(' '+state):'');t.textContent=text;}
 function authMsg(t,cls){const e=document.getElementById('authMsg');e.textContent=t;e.className='auth-msg'+(cls?(' '+cls):'');}
@@ -673,14 +674,19 @@ async function showApp(user){
  document.getElementById('authPass').value='';
  await loadCloud(user.id);
 }
-function applySession(session){if(session&&session.user)showApp(session.user);else showGate();}
+function applySession(session,ev){
+ if(session&&session.user){
+  if(CURRENT_UID===session.user.id&&ev!=='INITIAL_SESSION')return; // token refresh / opětovné SIGNED_IN → nepřenačítej (jinak přepíše rozepsaný formulář)
+  showApp(session.user);
+ }else showGate();
+}
 
 async function loadCloud(uid){
  CURRENT_UID=uid;setSync('busy','Načítám…');
  try{
   const{data,error}=await sb.from(TABLE).select('nastaveni,vyjimky,updated_at').eq('id',SHARED_ID).maybeSingle();
   if(error)throw error;
-  if(data){NAST=Object.assign(defaultNast(),data.nastaveni||{});if(!NAST.ridici)NAST.ridici={};VYJ=data.vyjimky||{};sharedVersion=data.updated_at||null;}
+  if(data){NAST=Object.assign(defaultNast(),data.nastaveni||{});if(!NAST.ridici)NAST.ridici={};VYJ=data.vyjimky||{};sharedVersion=data.updated_at||null;pendingRemote=null;}
   else{NAST=defaultNast();VYJ={};sharedVersion=null;}
   await loadHist();
   await migrateOldHistory();
@@ -700,7 +706,7 @@ async function migrateOldHistory(){
 async function reloadShared(){
  const{data,error}=await sb.from(TABLE).select('nastaveni,vyjimky,updated_at').eq('id',SHARED_ID).maybeSingle();
  if(error){console.error(error);return;}
- if(data){applyingRemote=true;NAST=Object.assign(defaultNast(),data.nastaveni||{});if(!NAST.ridici)NAST.ridici={};delete NAST.historie;VYJ=data.vyjimky||{};sharedVersion=data.updated_at||null;reRender();applyingRemote=false;}
+ if(data){pendingRemote=null;applyingRemote=true;NAST=Object.assign(defaultNast(),data.nastaveni||{});if(!NAST.ridici)NAST.ridici={};delete NAST.historie;VYJ=data.vyjimky||{};sharedVersion=data.updated_at||null;reRender();applyingRemote=false;}
 }
 function subscribeRealtime(){
  if(!sb||rtChannel)return;
@@ -716,14 +722,19 @@ function subscribeRealtime(){
   .subscribe();
 }
 async function unsubscribeRealtime(){if(rtChannel&&sb){try{await sb.removeChannel(rtChannel);}catch(e){}}rtChannel=null;}
-function onRemoteShared(row){
- const ae=document.activeElement;
- const editing=ae&&/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)&&ae.closest&&ae.closest('#appMain');
- if(editing||saveTimer){setSync('busy','Změněno jinde');toast('Data změnil někdo jiný — po uložení/obnovení se sjednotí.');return;}
+function isEditingField(){const ae=document.activeElement;return !!(ae&&/^(INPUT|TEXTAREA)$/.test(ae.tagName)&&ae.closest&&ae.closest('#appMain'));}
+function applyRemoteRow(row){
  applyingRemote=true;
  NAST=Object.assign(defaultNast(),row.nastaveni||{});if(!NAST.ridici)NAST.ridici={};delete NAST.historie;VYJ=row.vyjimky||{};sharedVersion=row.updated_at||null;
  reRender();applyingRemote=false;setSync('ok','Aktualizováno (tým)');
 }
+function onRemoteShared(row){
+ if(isEditingField()||saveTimer){pendingRemote=row;setSync('busy','Změněno jinde');toast('Kolega uložil změnu — projeví se, jakmile dopíšeš.');return;}
+ pendingRemote=null;applyRemoteRow(row);
+}
+function applyPendingRemote(){if(pendingRemote&&!isEditingField()&&!saveTimer){const r=pendingRemote;pendingRemote=null;applyRemoteRow(r);}}
+document.addEventListener('focusout',()=>setTimeout(applyPendingRemote,250));
+setInterval(applyPendingRemote,15000);
 function reRender(){
  migrateEmails();renderEmails();
  const ee=document.getElementById('empEmail');if(ee)ee.value=NAST.email_zamestnavatel||'';
@@ -741,39 +752,44 @@ function composeEmail(){const to=validEmails(NAST.emaily);if(!to.length){toast('
  const mk=curMonth();window.location.href='mailto:'+to.join(',')+'?subject='+encodeURIComponent('Cestovní příkazy '+(mk||''));}
 function updChip(){const n=Object.keys(NAST.ridici).length;document.getElementById('chipInfo').textContent=n+' '+(n===1?'řidič':(n>=2&&n<=4?'řidiči':'řidičů'));}
 
-function scheduleSave(){if(!CURRENT_UID||applyingRemote)return;setSync('busy','Ukládám…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveCloud(false),900);}
-async function saveCloud(manual){
- if(!CURRENT_UID){if(manual)toast('Nejsi přihlášený.');return;}
+let dirty=false;   // jsou v NAST/VYJ neuložené změny?
+function scheduleSave(){if(!CURRENT_UID||applyingRemote)return;dirty=true;setSync('busy','Ukládám…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveCloud(false),900);}
+async function saveCloud(manual,force){
+ if(!CURRENT_UID){if(manual)toast('Nejsi přihlášený.');return false;}
  clearTimeout(saveTimer);saveTimer=null;
  const stamp=new Date().toISOString();
  setSync('busy','Ukládám…');
  try{
-  // Neznáme verzi (např. po chybě načtení) → zjisti aktuální stav, ať máme o co opřít zámek.
+  // Neznáme verzi (např. po chybě načtení) → zjisti aktuální stav.
   if(!sharedVersion){
    const cv=await sb.from(TABLE).select('updated_at').eq('id',SHARED_ID).maybeSingle();
    if(cv.error)throw cv.error;
-   if(cv.data&&cv.data.updated_at){sharedVersion=cv.data.updated_at;}
-   else{ // řádek ještě neexistuje → vlož
+   if(cv.data&&cv.data.updated_at){
+    if(force){sharedVersion=cv.data.updated_at;} // import: uživatel VÝSLOVNĚ přepisuje
+    else{ // Řádek existuje, ale nemáme jeho verzi (nejspíš selhalo načtení) → NEPŘEPISUJ prázdným/starým stavem.
+     dirty=false;setSync('err','Načítám znovu');toast('Data se nenačetla korektně — načítám aktuální verzi, zopakuj prosím úpravu.');
+     await reloadShared();return false;}
+   }else{ // řádek ještě neexistuje → vlož
     const ins=await sb.from(TABLE).upsert({id:SHARED_ID,nastaveni:NAST,vyjimky:VYJ,updated_at:stamp},{onConflict:'id'}).select('updated_at');
     if(ins.error)throw ins.error;
     sharedVersion=ins.data&&ins.data[0]&&ins.data[0].updated_at;
-    setSync('ok','Uloženo ✓');if(manual)toast('Uloženo do cloudu.');return;
+    dirty=false;setSync('ok','Uloženo ✓');if(manual)toast('Uloženo do cloudu.');return true;
    }
   }
   // Optimistický zámek: zapiš jen pokud se verze od načtení nezměnila.
   const{data,error}=await sb.from(TABLE).update({nastaveni:NAST,vyjimky:VYJ,updated_at:stamp}).eq('id',SHARED_ID).eq('updated_at',sharedVersion).select('updated_at');
   if(error)throw error;
   if(!data||!data.length){
-   // Konflikt — někdo jiný uložil mezitím. Nepřepisuj tiše: načti aktuální verzi.
-   setSync('err','Konflikt — načítám');
-   toast('Data byla mezitím změněna jinde. Načítám aktuální verzi — zkontroluj prosím své změny.');
-   await reloadShared();
-   return;
+   // Konflikt — někdo jiný uložil dřív. Nepřepisuj tiše: načti aktuální verzi.
+   dirty=false;setSync('err','Konflikt — načítám');
+   toast('Kolega uložil změnu dřív — tvé poslední neuložené úpravy byly nahrazeny jeho verzí.');
+   await reloadShared();return false;
   }
   sharedVersion=data[0].updated_at;
-  setSync('ok','Uloženo ✓');if(manual)toast('Uloženo do cloudu.');
- }catch(e){console.error(e);setSync('err','Chyba ukládání');toast('Chyba ukládání do cloudu.');}
+  dirty=false;setSync('ok','Uloženo ✓');if(manual)toast('Uloženo do cloudu.');return true;
+ }catch(e){console.error(e);setSync('err','Chyba ukládání');toast('Chyba ukládání do cloudu — změny NEuloženy.');return false;}
 }
+window.addEventListener('beforeunload',e=>{if(dirty||saveTimer){e.preventDefault();e.returnValue='';}});
 
 /* ====== Backup export / import (.json) ====== */
 function exportBackup(){const n=Object.assign({},NAST);delete n.historie;
@@ -782,12 +798,15 @@ function exportBackup(){const n=Object.assign({},NAST);delete n.historie;
  a.download='cestovni-prikazy-zaloha.json';a.click();toast('Záloha stažena.');}
 function importBackup(){const inp=document.createElement('input');inp.type='file';inp.accept='application/json,.json';
  inp.onchange=async()=>{const f=inp.files[0];if(!f)return;try{const o=JSON.parse(await f.text());
+  const rc=(o.nastaveni&&o.nastaveni.ridici)?Object.keys(o.nastaveni.ridici).length:(o.ridici?Object.keys(o.ridici).length:0);
+  if(!confirm('Nahradit nastavení a řidiče ('+rc+') pro CELÝ TÝM daty ze zálohy'+(o._exported?(' z '+String(o._exported).slice(0,10)):'')+'?\nSoučasná data se přepíšou.'))return;
+  try{exportBackup();}catch(_){}
   if(o.nastaveni){NAST=Object.assign(defaultNast(),o.nastaveni);}else if(o.ridici){NAST=Object.assign(defaultNast(),o);}
   if(o.vyjimky){VYJ=o.vyjimky;}else if(!o.nastaveni&&!o.ridici){VYJ=o;}
   delete NAST.historie;if(!NAST.ridici)NAST.ridici={};
   reRender();
-  try{const cv=await sb.from(TABLE).select('updated_at').eq('id',SHARED_ID).maybeSingle();if(cv.data)sharedVersion=cv.data.updated_at;}catch(e){}
-  await saveCloud(true);
+  const ok=await saveCloud(true,true);
+  if(!ok){toast('Import se NEuložil (konflikt nebo chyba sítě). Zkus to prosím znovu.');return;}
   if(Array.isArray(o.historie)&&o.historie.length){
    const snaps=o.historie.map(h=>h.data?h:({id:h.id,ridic:h.ridic,mk:h.mk,obdobi:h.obdobi,vytvoreno:h.vytvoreno||new Date().toISOString(),data:{firma:h.firma,ucel:h.ucel,prac:h.prac,zakladni:h.zakladni,res:h.res}}));
    if(await dbUpsertHist(snaps)){await loadHist();fillHistFilter();renderHist();}
@@ -946,7 +965,7 @@ async function init(){
   authMsg('Chybí konfigurace připojení (config.js). Kontaktuj správce aplikace.','err');
   document.getElementById('authSubmit').disabled=true;return;}
  sb=window.supabase.createClient(window.__SB.url,window.__SB.anon);
- sb.auth.onAuthStateChange((_ev,session)=>applySession(session));
+ sb.auth.onAuthStateChange((ev,session)=>applySession(session,ev));
  const{data}=await sb.auth.getSession();
  applySession(data.session);
 }

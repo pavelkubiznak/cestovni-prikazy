@@ -161,11 +161,11 @@ body.simple #vGen .btn.primary.sm{font-size:14.5px;padding:11px 18px;}
 .prev-bar{display:flex;gap:10px;align-items:center;justify-content:center;padding:11px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);}
 .prev-scroll{flex:1;overflow:auto;padding:22px 14px;display:flex;justify-content:center;align-items:flex-start;}
 .prev-scroll #printRoot{background:#fff;width:100%;max-width:900px;padding:16mm 13mm;box-shadow:0 12px 44px rgba(0,0,0,.34);border-radius:3px;}
-@media print{body *{visibility:hidden!important;}#printRoot,#printRoot *{visibility:visible!important;}
-.prev-overlay{position:static!important;display:block!important;background:none!important;inset:auto!important;}
-.prev-bar{display:none!important;}
-.prev-scroll{display:block!important;overflow:visible!important;padding:0!important;}
-#printRoot{position:absolute;left:0;top:0;width:100%;max-width:none!important;padding:0!important;box-shadow:none!important;background:#fff!important;}
+@media print{body.previewing *{visibility:hidden!important;}body.previewing #printRoot,body.previewing #printRoot *{visibility:visible!important;}
+body.previewing .prev-overlay{position:static!important;display:block!important;background:none!important;inset:auto!important;}
+body.previewing .prev-bar{display:none!important;}
+body.previewing .prev-scroll{display:block!important;overflow:visible!important;padding:0!important;}
+body.previewing #printRoot{position:absolute;left:0;top:0;width:100%;max-width:none!important;padding:0!important;box-shadow:none!important;background:#fff!important;}
 @page{size:A4 portrait;margin:12mm 11mm;}}
 
 .a4{font-family:"Liberation Sans","DejaVu Sans",Arial,sans-serif;font-size:9.2pt;color:#000;background:#fff;}
@@ -355,49 +355,62 @@ function pickDest(cile,n,lo,hi,rng){const items=Object.entries(cile);if(n>items.
 function timesFor(km,speed,rng){const oh=[8,8,8.5,9,9][Math.floor(rng()*5)];const jizda=Math.max(20,Math.round(km/speed*60/5)*5);const jed=[60,75,90,90,105,120][Math.floor(rng()*6)];const o=Math.round(oh*60),pc=o+jizda,oz=pc+jed,pd=oz+jizda;const t=x=>{x=Math.min(x,23*60+55);return Math.floor(x/60)+":"+String(x%60).padStart(2,"0");};return[t(o),t(pc),t(oz),t(pd)];}
 function genForDriver(name,base,y,m,override,sazby,seedOverride){
   const d=Object.assign({},base,override||{});
+  // Sazby VŽDY dle roku generovaného měsíce (ne napevno 2026). Když pro rok chybí, generování odmítni (radši nic než špatné Kč).
+  sazby=(typeof NAST!=='undefined'&&NAST&&NAST.sazby_dle_roku&&NAST.sazby_dle_roku[y])||SAZBY[y];
+  if(!sazby) throw new Error('no-rates:'+y);
+  // Sanitace cílů: jen kladná celá km (překlep / NaN / 0 se zahodí).
+  const cile={};for(const[k,v]of Object.entries(d.cile||{})){const km=parseInt(v,10);if(k&&String(k).trim()&&Number.isFinite(km)&&km>0)cile[String(k).trim()]=km;}
+  if(!Object.keys(cile).length) throw new Error('no-cile');
+  d.cile=cile;
+  const od=+d.castka_od||0,doo=+d.castka_do||0;
   const rate=rateOf(d,sazby);
-  const pocet=+d.pocet_jizd;
-  const lo=Math.round(d.castka_od/(2*rate)),hi=Math.floor(d.castka_do/(2*rate));
+  const pocet=Math.max(1,Math.min(6,parseInt(d.pocet_jizd,10)||1));
+  const lo=Math.ceil(od/(2*rate)),hi=Math.floor(doo/(2*rate));
   const rng=mulberry32((seedOverride!=null)?seedOverride:strHash(name+"|"+y+"|"+m));
   const vyb=pickDest(d.cile,pocet,lo,hi,rng);
   const vac=vacSet(d.dovolena);
   let datumy=pickDates(y,m,vyb.length,vac,rng);
-  while(datumy.length<vyb.length){const last=datumy.length?new Date(datumy[datumy.length-1]):new Date(y,m-1,15);last.setDate(last.getDate()+1);datumy.push(last);}
+  // Doplnění chybějících dnů: recykluj dostupné pracovní dny V RÁMCI měsíce (nikdy přes konec měsíce ani na víkend/svátek).
+  const baseCount=datumy.length;let pi=0;
+  while(datumy.length<vyb.length){datumy.push(baseCount>0?new Date(datumy[pi++%baseCount]):new Date(y,m-1,15));}
+  datumy.sort((a,b)=>a-b);
   const trips=vyb.map((it,i)=>{const km=it[1];const tt=timesFor(km,d.rychlost||80,rng);const dt=datumy[i];
     return {datum:`${dt.getDate()}. ${dt.getMonth()+1}. ${dt.getFullYear()}`,dest:it[0],km:km,odj:tt[0],prij:tt[1],odj2:tt[2],prij2:tt[3]};});
   const celkem_km=trips.reduce((a,t)=>a+t.km*2,0);
   const celkem=Math.round(trips.reduce((a,t)=>a+Math.round(t.km*rate*100)/100*2,0)*100)/100;
   // Padla částka do zadaného intervalu castka_od..castka_do? (po změně auta/spotřeby ji nemusí jít z daných cílů složit)
-  const kmAll=Object.values(d.cile||{}).map(Number).filter(x=>x>0).sort((a,b)=>a-b);
+  const kmAll=Object.values(d.cile).map(Number).filter(x=>x>0).sort((a,b)=>a-b);
   let mimoInterval=false,castkaMin=null,castkaMax=null,pocetDoporuceny=null;
   if(kmAll.length){
     const nn=Math.min(pocet,kmAll.length);
     const sumLo=k=>kmAll.slice(0,k).reduce((a,b)=>a+b,0),sumHi=k=>kmAll.slice(-k).reduce((a,b)=>a+b,0);
     castkaMin=Math.round(sumLo(nn)*2*rate);castkaMax=Math.round(sumHi(nn)*2*rate);
-    mimoInterval=celkem<d.castka_od-0.5||celkem>d.castka_do+0.5;
-    if(mimoInterval)for(let k=1;k<=kmAll.length;k++){if(sumHi(k)*2*rate>=d.castka_od&&sumLo(k)*2*rate<=d.castka_do){pocetDoporuceny=k;break;}}
+    mimoInterval=celkem<od-0.5||celkem>doo+0.5;
+    if(mimoInterval)for(let k=1;k<=kmAll.length;k++){if(sumHi(k)*2*rate>=od&&sumLo(k)*2*rate<=doo){pocetDoporuceny=k;break;}}
   }
   return {d,rate,trips,celkem_km,celkem,avg:avgSpotreba(d),cena:sazby[d.palivo||"natural95"],mimoInterval,castkaMin,castkaMax,pocetDoporuceny};
 }
 function kc(x){return x.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g," ").replace(".",",");}
 function kc0(x){return Math.round(x||0).toLocaleString("cs-CZ");}
+function escapeHtml(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function validEmails(arr){return (arr||[]).map(e=>(e||'').trim()).filter(e=>/^[^\s@?&,<>"']+@[^\s@?&,<>"']+\.[^\s@?&,<>"']+$/.test(e));}
 // ===ENGINE END===
 
 function a4Html(firma,name,res,obdobi,ucel,pracDoba,zakladni){
   const d=res.d,trips=res.trips,rate=res.rate;
   const home=d.vychozi_bod,navrat=d.navratovy_bod;
-  let prikaz="";trips.forEach(t=>{prikaz+=`<tr><td class="l">${home}, ${t.datum}, ${t.odj}</td><td class="c">${ucel}</td><td class="l">${navrat}, ${t.datum}, ${t.prij2}</td></tr>`;});
-  const leg=(dat,sm,mi,ca,km,j)=>`<tr><td class="c">${dat}</td><td>${sm}</td><td>${mi}</td><td class="c">${ca}</td><td class="c">AUV</td><td class="r">${km||""}</td><td></td><td class="r">${j?kc(j):""}</td><td></td><td></td><td class="r">${j?kc(j):""}</td><td></td></tr>`;
+  let prikaz="";trips.forEach(t=>{prikaz+=`<tr><td class="l">${escapeHtml(home)}, ${t.datum}, ${t.odj}</td><td class="c">${escapeHtml(ucel)}</td><td class="l">${escapeHtml(navrat)}, ${t.datum}, ${t.prij2}</td></tr>`;});
+  const leg=(dat,sm,mi,ca,km,j)=>`<tr><td class="c">${dat}</td><td>${sm}</td><td>${escapeHtml(mi)}</td><td class="c">${ca}</td><td class="c">AUV</td><td class="r">${km||""}</td><td></td><td class="r">${j?kc(j):""}</td><td></td><td></td><td class="r">${j?kc(j):""}</td><td></td></tr>`;
   let rows="";trips.forEach(t=>{const j=Math.round(t.km*rate*100)/100;rows+=leg(t.datum,"Odjezd",home,t.odj,t.km,j)+leg("","Příjezd",t.dest,t.prij,0,0)+leg("","Odjezd",t.dest,t.odj2,t.km,j)+leg("","Příjezd",navrat,t.prij2,0,0);});
   const palivo=PALIVO_NAZEV[d.palivo||"natural95"], vyhl=VYHLASKA[obdobi.split(" ")[1]]||"";
   return `<div class="a4">
-  <div class="hdr"><div class="firma">${firma}</div><div class="title">CESTOVNÍ&nbsp;PŘÍKAZ</div><div class="small" style="text-align:right">období:<br><b>${obdobi}</b></div></div>
-  <div class="field"><span class="lab">1. Příjmení, jméno, titul</span><span class="val big">${name}</span></div>
-  <div class="field"><span class="lab">2. Bydliště</span><span class="val">${d.bydliste||""}</span></div>
-  <div class="field"><span class="lab">Normální pracovní doba:</span><span class="val">${pracDoba}</span></div>
+  <div class="hdr"><div class="firma">${escapeHtml(firma)}</div><div class="title">CESTOVNÍ&nbsp;PŘÍKAZ</div><div class="small" style="text-align:right">období:<br><b>${escapeHtml(obdobi)}</b></div></div>
+  <div class="field"><span class="lab">1. Příjmení, jméno, titul</span><span class="val big">${escapeHtml(name)}</span></div>
+  <div class="field"><span class="lab">2. Bydliště</span><span class="val">${escapeHtml(d.bydliste||"")}</span></div>
+  <div class="field"><span class="lab">Normální pracovní doba:</span><span class="val">${escapeHtml(pracDoba)}</span></div>
   <table class="gridt" style="margin-top:8px"><thead><tr><th style="width:42%">Počátek cesty (místo, datum, hod.)</th><th style="width:24%">Účel cesty</th><th style="width:34%">Konec cesty (místo, datum, hod.)</th></tr></thead><tbody>${prikaz}</tbody></table>
   <div class="sec">3. Zaměstnanec s pracovní cestou souhlasí</div>
-  <div class="field"><span class="lab">4. Určený dopravní prostředek (u vlastního vozidla druh, SPZ a přiložit kopii TP):</span><span class="val"><b>${d.spz||""}</b> &nbsp;–&nbsp; ${d.auto||""}</span></div>
+  <div class="field"><span class="lab">4. Určený dopravní prostředek (u vlastního vozidla druh, SPZ a přiložit kopii TP):</span><span class="val"><b>${escapeHtml(d.spz||"")}</b> &nbsp;–&nbsp; ${escapeHtml(d.auto||"")}</span></div>
   <div class="field"><span class="lab">5. Povolená záloha Kč</span><span class="val"></span><span class="lab" style="margin-left:14px">vyplacena dne</span><span class="val"></span></div>
   <div class="sign"><div>Podpis pokladníka</div><div>Datum a podpis pracovníka<br>oprávněného k povolení cesty</div><div></div></div>
   <div class="sec" style="margin-top:16px;font-size:11pt">VYÚČTOVÁNÍ PRACOVNÍ CESTY</div>
@@ -408,11 +421,11 @@ function a4Html(firma,name,res,obdobi,ucel,pracDoba,zakladni){
   <div class="sign"><div>Datum a podpis pracovníka,<br>který upravil vyúčtování</div><div>Datum a podpis příjemce<br>(průkaz totožnosti)</div><div>Schválil<br>(datum a podpis)</div></div>
   <div class="page2"></div>
   <div class="title" style="font-size:14pt;letter-spacing:3px;margin-bottom:10px">VYÚČTOVÁNÍ&nbsp;PRACOVNÍ&nbsp;CESTY</div>
-  <div class="field"><span class="lab">Zaměstnanec:</span><span class="val big" style="font-size:11pt">${name}</span><span class="lab" style="margin-left:14px">období:</span><span class="val">${obdobi}</span></div>
+  <div class="field"><span class="lab">Zaměstnanec:</span><span class="val big" style="font-size:11pt">${escapeHtml(name)}</span><span class="lab" style="margin-left:14px">období:</span><span class="val">${escapeHtml(obdobi)}</span></div>
   <table class="vy" style="margin-top:6px"><thead><tr><th style="width:8%">Datum</th><th style="width:7%">Odjezd /<br>příjezd</th><th style="width:20%">Místo</th><th style="width:6%">v hod.</th><th style="width:8%">Použitý<br>doprav.</th><th style="width:8%">Vzdál.<br>km</th><th style="width:9%">Poč./konec<br>výkonu</th><th style="width:9%">Jízdné Kč</th><th style="width:6%">Stravné</th><th style="width:7%">Nutné výd.</th><th style="width:9%">Celkem Kč</th><th style="width:6%">Uprav.</th></tr></thead><tbody>${rows}
   <tr><td></td><td class="c"><b>Celkem km</b></td><td></td><td></td><td></td><td class="r"><b>${res.celkem_km}</b></td><td></td><td class="r"><b>${kc(res.celkem)}</b></td><td class="r">0</td><td class="r">0</td><td class="r"><b>${kc(res.celkem)}</b></td><td></td></tr></tbody></table>
   <div class="totline" style="margin-top:8px"><span>Celkem k proplacení:</span> <b>${kc(res.celkem)} Kč</b></div>
-  <div class="note2">Vozidlo: ${d.auto} | SPZ ${d.spz} | náhrada ${kc(rate)} Kč/km (základní ${kc(zakladni)} Kč/km + spotřeba ${res.avg.toFixed(2)} l/100 km × ${kc(res.cena)} Kč/l, ${palivo}, vyhláška ${vyhl}).</div>
+  <div class="note2">Vozidlo: ${escapeHtml(d.auto||"")} | SPZ ${escapeHtml(d.spz||"")} | náhrada ${kc(rate)} Kč/km (základní ${kc(zakladni)} Kč/km + spotřeba ${res.avg.toFixed(2)} l/100 km × ${kc(res.cena)} Kč/l, ${palivo}, vyhláška ${vyhl}).</div>
   <div class="sign" style="margin-top:26px"><div></div><div>Datum a podpis pracovníka</div><div></div></div>
   </div>`;
 }
@@ -425,8 +438,8 @@ function tab(t){['Gen','Rid','Vyj','Dor','Hist'].forEach(x=>{document.getElement
 function ridCards(){const ent=Object.entries(NAST.ridici);
  if(!ent.length){document.getElementById('ridCards').innerHTML='<div class="empty">Zatím žádní řidiči. Přidej prvního tlačítkem výše, nebo naimportuj zálohu dole.</div>';return;}
  let h='';for(const[nm,d]of ent){const id=strHash(nm);
- h+=`<div class="card"><div class="dh"><div class="avatar" style="background:${avc(nm)}">${initials(nm)}</div>
-   <div><div class="nm">${nm}</div><div class="sub">${d.vychozi_bod||'?'} → ${d.navratovy_bod||'?'}</div></div>
+ h+=`<div class="card"><div class="dh"><div class="avatar" style="background:${avc(nm)}">${escapeHtml(initials(nm))}</div>
+   <div><div class="nm">${escapeHtml(nm)}</div><div class="sub">${escapeHtml(d.vychozi_bod||'?')} → ${escapeHtml(d.navratovy_bod||'?')}</div></div>
    <div class="badge" id="rate_${id}"></div>
    <button class="btn danger sm" style="margin-left:8px" type="button" onclick="delRidic('${encodeURIComponent(nm)}')">Smazat</button></div>
    <div class="grid">
@@ -457,7 +470,7 @@ function ridCards(){const ent=Object.entries(NAST.ridici);
    </div>
    <details class="adv"><summary>Cíle a vzdálenosti (km)</summary>
      <p class="small muted" style="margin:6px 0">Jeden cíl na řádek: <b>Cíl;km</b> (jednosměrně z výchozího bodu).</p>
-     <textarea class="w-full" style="height:120px" oninput="setcile('${encodeURIComponent(nm)}',this.value)">${Object.entries(d.cile||{}).map(([k,v])=>k+';'+v).join('\n')}</textarea>
+     <textarea class="w-full" style="height:120px" oninput="setcile('${encodeURIComponent(nm)}',this.value)">${escapeHtml(Object.entries(d.cile||{}).map(([k,v])=>k+';'+v).join('\n'))}</textarea>
    </details></div>`;}
  document.getElementById('ridCards').innerHTML=h;
  for(const nm of Object.keys(NAST.ridici))rate1(nm);}
@@ -465,7 +478,7 @@ function rate1(nm){nm=dec(nm);const el=document.getElementById('rate_'+strHash(n
 function dec(s){try{return decodeURIComponent(s);}catch(e){return s;}}
 function setv(nm,k,v){nm=dec(nm);NAST.ridici[nm][k]=v;scheduleSave();}
 function setsp(nm,k,v){nm=dec(nm);NAST.ridici[nm].spotreba[k]=parseFloat(v)||0;rate1(nm);scheduleSave();}
-function setcile(nm,txt){nm=dec(nm);const o={};txt.split(/\n/).forEach(l=>{const m=l.split(';');if(m[0]&&m[0].trim()&&m[1])o[m[0].trim()]=parseInt(m[1]);});NAST.ridici[nm].cile=o;scheduleSave();}
+function setcile(nm,txt){nm=dec(nm);const o={};txt.split(/\n/).forEach(l=>{const m=l.split(';');const km=parseInt(m[1],10);if(m[0]&&m[0].trim()&&Number.isFinite(km)&&km>0)o[m[0].trim()]=km;});NAST.ridici[nm].cile=o;scheduleSave();}
 function addRidic(){let i=1,nm='Nový řidič';while(NAST.ridici[nm]){i++;nm='Nový řidič '+i;}
  NAST.ridici[nm]={bydliste:'',auto:'',spz:'',palivo:'natural95',spotreba:{mesto:7.5,mimo:5.5,kombi:6.5},vychozi_bod:'',navratovy_bod:'',pocet_jizd:3,castka_od:4000,castka_do:5000,rychlost:80,cile:{}};
  ridCards();fillDrivers();updChip();scheduleSave();toast('Řidič přidán.');}
@@ -481,9 +494,9 @@ function genCards(){const mk=curMonth();const box=document.getElementById('genCa
  if(!mk){box.innerHTML='';return;}const[y,m]=mk.split('-').map(Number);
  document.getElementById('genSub').textContent='Náhled vychází ze stálého nastavení a případné výjimky pro tento měsíc.';
  let h='';for(const[nm,d]of Object.entries(NAST.ridici)){const ov=(VYJ[mk]||{})[nm]||null;
-  let res;try{res=genForDriver(nm,d,y,m,ov,SZ,seedFor(nm,mk));}catch(e){h+=`<div class="gen-card"><div class="who"><div class="nm">${nm}</div><div class="meta" style="color:var(--danger)">Chybí cíle/částky — doplň v Řidiči</div></div></div>`;continue;}
-  h+=`<div class="gen-card"><div class="avatar" style="background:${avc(nm)}">${initials(nm)}</div>
-    <div class="who"><div class="nm">${nm}</div><div class="meta">${res.trips.length} jízd${ov?' • výjimka':''}${HIST.some(h=>h.id===nm+'|'+mk)?' • <span style="color:var(--ok)">✓ v historii</span>':''}</div></div>
+  let res;try{res=genForDriver(nm,d,y,m,ov,SZ,seedFor(nm,mk));}catch(e){const msg=String(e&&e.message||'').startsWith('no-rates')?('Chybí sazby pro rok '+(mk.split('-')[0])+' — doplň vyhlášku'):'Chybí cíle/částky — doplň v Řidiči';h+=`<div class="gen-card"><div class="who"><div class="nm">${escapeHtml(nm)}</div><div class="meta" style="color:var(--danger)">${msg}</div></div></div>`;continue;}
+  h+=`<div class="gen-card"><div class="avatar" style="background:${avc(nm)}">${escapeHtml(initials(nm))}</div>
+    <div class="who"><div class="nm">${escapeHtml(nm)}</div><div class="meta">${res.trips.length} jízd${ov?' • výjimka':''}${HIST.some(h=>h.id===nm+'|'+mk)?' • <span style="color:var(--ok)">✓ v historii</span>':''}</div></div>
     <div class="nums"><div class="kc"${res.mimoInterval?' style="color:var(--danger)" title="Mimo zadaný interval"':''}>${kc(res.celkem)} Kč</div><div class="meta">${res.celkem_km} km</div></div>
     <div class="gen-actions"><button class="btn soft sm" onclick="preview('${encodeURIComponent(nm)}')">👁 Náhled</button><button class="btn ghost sm adv-only" onclick="saveToHist('${encodeURIComponent(nm)}')">Do historie</button><button class="btn ghost sm adv-only" title="Vylosovat jiné cíle" onclick="regenOne('${encodeURIComponent(nm)}')">🎲 Přegenerovat</button></div>${res.mimoInterval?`
     <div class="gen-warn">⚠️ Částku se nepodařilo složit do intervalu <b>${kc0(res.d.castka_od)}–${kc0(res.d.castka_do)} Kč</b>. Z těchto cílů a <b>${res.trips.length} jízd</b> jde dosáhnout jen <b>${kc0(res.castkaMin)}–${kc0(res.castkaMax)} Kč</b>.${res.pocetDoporuceny&&res.pocetDoporuceny!==res.trips.length?` Zkus <b>${res.pocetDoporuceny} jízd</b> nebo uprav interval / cíle řidiče.`:` Uprav interval, počet jízd nebo cíle řidiče.`}</div>`:''}</div>`;}
@@ -496,15 +509,16 @@ function regenAll(){const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
  const names=Object.keys(NAST.ridici);if(!names.length){toast('Žádní řidiči.');return;}
  if(!NAST.seeds)NAST.seeds={};for(const nm of names)NAST.seeds[nm+'|'+mk]=Math.floor(Math.random()*2147483647);
  genCards();scheduleSave();toast('Vylosováno znovu pro všechny ('+mk+').');}
-function showPreview(html){document.getElementById('printRoot').innerHTML=html;const ov=document.getElementById('previewOverlay');ov.style.display='flex';ov.querySelector('.prev-scroll').scrollTop=0;}
-function closePreview(){document.getElementById('previewOverlay').style.display='none';}
+function showPreview(html){document.getElementById('printRoot').innerHTML=html;const ov=document.getElementById('previewOverlay');ov.style.display='flex';document.body.classList.add('previewing');ov.querySelector('.prev-scroll').scrollTop=0;}
+function closePreview(){document.getElementById('previewOverlay').style.display='none';document.body.classList.remove('previewing');document.getElementById('printRoot').innerHTML='';}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){const ov=document.getElementById('previewOverlay');if(ov&&ov.style.display==='flex')closePreview();}});
-function preview(nm){nm=dec(nm);const mk=curMonth();const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
- const res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));const obdobi=MESICE[m]+' '+y;
+function preview(nm){nm=dec(nm);const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}const[y,m]=mk.split('-').map(Number);const ov=(VYJ[mk]||{})[nm]||null;
+ let res;try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));}catch(e){toast(String(e&&e.message||'').startsWith('no-rates')?('Chybí sazby pro rok '+y+' — nelze zobrazit.'):'Doplň cíle/částky řidiče.');return;}
+ const obdobi=MESICE[m]+' '+y;
  showPreview(a4Html(NAST.firma,nm,res,obdobi,NAST.ucel_cesty||"Pracovní jednání",NAST.prac_doba||"",SZ.zakladni));}
 
 // výjimky
-function fillDrivers(){document.getElementById('vDriver').innerHTML=Object.keys(NAST.ridici).map(j=>`<option>${j}</option>`).join('');}
+function fillDrivers(){document.getElementById('vDriver').innerHTML=Object.keys(NAST.ridici).map(j=>`<option>${escapeHtml(j)}</option>`).join('');}
 function renderVacCalendar(){const box=document.getElementById('calWrap');if(!box)return;
  const mk=document.getElementById('vMonth').value;if(!mk){box.innerHTML='';return;}
  const[y,m]=mk.split('-').map(Number);const hol=holidaySet(y);
@@ -529,7 +543,7 @@ function saveVyj(){const mk=document.getElementById('vMonth').value,jm=document.
 function clearVyj(){const mk=document.getElementById('vMonth').value,jm=document.getElementById('vDriver').value;if(VYJ[mk]){delete VYJ[mk][jm];if(!Object.keys(VYJ[mk]).length)delete VYJ[mk];}loadVyj();genCards();scheduleSave();toast('Výjimka zrušena.');}
 function chips(){let h='';for(const[mk,obj]of Object.entries(VYJ)){if(mk[0]==='_')continue;for(const[jm,v]of Object.entries(obj)){
   const parts=[];if(v.pocet_jizd)parts.push(v.pocet_jizd+' jízd');if(v.castka_od||v.castka_do)parts.push((v.castka_od||'?')+'–'+(v.castka_do||'?')+' Kč');if(v.dovolena)parts.push('dovolená');
-  h+=`<div class="chip2"><b>${mk}</b> ${jm}: ${parts.join(', ')||'—'} <button onclick="delVyj('${mk}','${encodeURIComponent(jm)}')">×</button></div>`;}}
+  h+=`<div class="chip2"><b>${escapeHtml(mk)}</b> ${escapeHtml(jm)}: ${escapeHtml(parts.join(', ')||'—')} <button onclick="delVyj('${mk}','${encodeURIComponent(jm)}')">×</button></div>`;}}
  document.getElementById('vyjChips').innerHTML=h||'<span class="small muted">Žádné výjimky.</span>';}
 function delVyj(mk,jm){jm=dec(jm);if(VYJ[mk]){delete VYJ[mk][jm];if(!Object.keys(VYJ[mk]).length)delete VYJ[mk];}chips();loadVyj();genCards();scheduleSave();}
 
@@ -573,7 +587,7 @@ async function delHist(id){id=dec(id);const h=HIST.find(x=>x.id===id);if(!h)retu
   HIST=HIST.filter(x=>x.id!==id);fillHistFilter();renderHist();toast('Smazáno z historie.');}
 function fillHistFilter(){const sel=document.getElementById('histFilter');if(!sel)return;const cur=sel.value;
   const names=[...new Set(HIST.map(h=>h.ridic))].sort();
-  sel.innerHTML='<option value="__all">Všichni řidiči</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
+  sel.innerHTML='<option value="__all">Všichni řidiči</option>'+names.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
   if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;}
 function renderHist(){const box=document.getElementById('histList');if(!box)return;
   let list=HIST.slice();
@@ -585,9 +599,9 @@ function renderHist(){const box=document.getElementById('histList');if(!box)retu
   if(!list.length){box.innerHTML='<div class="empty">Zatím nic v historii. V záložce <b>Generovat</b> ulož příkaz tlačítkem „Do historie“.</div>';return;}
   box.innerHTML=list.map(h=>{const r=h.data&&h.data.res?h.data.res:{trips:[],celkem:0,celkem_km:0};const excl=histExcluded.has(h.id);
     const dt=new Date(h.vytvoreno);const dts=isNaN(dt.getTime())?'':(dt.getDate()+'. '+(dt.getMonth()+1)+'. '+dt.getFullYear());
-    const trips=(r.trips||[]).map(t=>`<div class="hist-trip"><span class="dt">${t.datum}</span><b>${t.dest}</b><span class="km">${t.km} km</span></div>`).join('');
-    return `<div class="card hist-card${excl?' excl':''}"><div class="dh"><div class="avatar" style="background:${avc(h.ridic)}">${initials(h.ridic)}</div>
-      <div><div class="nm">${h.ridic}</div><div class="sub">${h.obdobi} • ${(r.trips||[]).length} jízd${dts?' • uloženo '+dts:''}</div></div>
+    const trips=(r.trips||[]).map(t=>`<div class="hist-trip"><span class="dt">${escapeHtml(t.datum)}</span><b>${escapeHtml(t.dest)}</b><span class="km">${t.km} km</span></div>`).join('');
+    return `<div class="card hist-card${excl?' excl':''}"><div class="dh"><div class="avatar" style="background:${avc(h.ridic)}">${escapeHtml(initials(h.ridic))}</div>
+      <div><div class="nm">${escapeHtml(h.ridic)}</div><div class="sub">${escapeHtml(h.obdobi)} • ${(r.trips||[]).length} jízd${dts?' • uloženo '+dts:''}</div></div>
       <div class="badge brand">${kc(r.celkem)} Kč</div></div>
       <details class="adv"><summary>Kam jel — ${r.celkem_km} km celkem</summary><div class="hist-trips">${trips}</div></details>
       <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label class="hist-inc"><input type="checkbox" ${excl?'':'checked'} onclick="toggleHistInc('${encodeURIComponent(h.id)}')"> do součtu</label>
@@ -601,7 +615,7 @@ function renderHistSummary(list){const box=document.getElementById('histSummary'
   const inc=list.filter(h=>!histExcluded.has(h.id));
   const total=inc.reduce((a,h)=>a+amt(h),0);
   const per={};inc.forEach(h=>{per[h.ridic]=(per[h.ridic]||0)+amt(h);});
-  const chips=Object.entries(per).sort((a,b)=>b[1]-a[1]).map(([nm,v])=>`<span class="chip2"><b>${nm}</b> ${kc(v)} Kč</span>`).join('');
+  const chips=Object.entries(per).sort((a,b)=>b[1]-a[1]).map(([nm,v])=>`<span class="chip2"><b>${escapeHtml(nm)}</b> ${kc(v)} Kč</span>`).join('');
   box.innerHTML=`<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><p class="h2t">Vyplaceno celkem: ${kc(total)} Kč</p><span class="small muted">${inc.length} z ${list.length} příkazů zahrnuto do součtu</span></div><div class="chips" style="margin-top:10px">${chips||'<span class="small muted">Nic zahrnuto — zaškrtni příkazy níže.</span>'}</div>`;}
 function toggleHistInc(id){id=dec(id);if(histExcluded.has(id))histExcluded.delete(id);else histExcluded.add(id);renderHist();}
 
@@ -723,7 +737,7 @@ function renderEmails(){const box=document.getElementById('emailList');if(!box)r
 function setEmail(i,v){NAST.emaily[i]=v.trim();scheduleSave();}
 function addEmail(){if(!Array.isArray(NAST.emaily))NAST.emaily=[];NAST.emaily.push('');renderEmails();}
 function removeEmail(i){NAST.emaily.splice(i,1);if(!NAST.emaily.length)NAST.emaily=[''];renderEmails();scheduleSave();}
-function composeEmail(){const to=(NAST.emaily||[]).map(e=>(e||'').trim()).filter(Boolean);if(!to.length){toast('Přidej aspoň jednu adresu.');return;}
+function composeEmail(){const to=validEmails(NAST.emaily);if(!to.length){toast('Přidej aspoň jednu platnou adresu.');return;}
  const mk=curMonth();window.location.href='mailto:'+to.join(',')+'?subject='+encodeURIComponent('Cestovní příkazy '+(mk||''));}
 function updChip(){const n=Object.keys(NAST.ridici).length;document.getElementById('chipInfo').textContent=n+' '+(n===1?'řidič':(n>=2&&n<=4?'řidiči':'řidičů'));}
 
@@ -853,11 +867,15 @@ function genPdfBlob(nm,res,obdobi){
 function zakladniSazba(){return SZ.zakladni;}
 async function sendToAccountant(){
  const mk=curMonth();if(!mk){toast('Vyber měsíc.');return;}
- const to=(NAST.emaily||[]).map(e=>(e||'').trim()).filter(Boolean);
- if(!to.length){toast('Přidej adresu příjemce v záložce Doručení.');return;}
+ const to=validEmails(NAST.emaily);
+ if(!to.length){toast('Přidej platnou adresu příjemce (⚙ Zobrazit vše → Doručení).');return;}
  const names=Object.keys(NAST.ridici);if(!names.length){toast('Žádní řidiči.');return;}
  const[y,m]=mk.split('-').map(Number);const obdobi=MESICE[m]+' '+y;
- if(!confirm('Připravit cestovní příkazy za '+obdobi+' a otevřít e‑mail pro: '+to.join(', ')+' ?\n(Vygeneruje PDF, stáhne ZIP a otevře tvůj e‑mail — přílohu přidáš.)'))return;
+ const backend=(window.__SB&&window.__SB.sendMode==='edge')?'edge':((window.__SB&&window.__SB.sendMode==='n8n')?'n8n':'');
+ const confMsg=(backend==='edge'||backend==='n8n')
+   ?('Vygenerovat cestovní příkazy za '+obdobi+' a ROVNOU ODESLAT e‑mailem na: '+to.join(', ')+' ?')
+   :('Připravit cestovní příkazy za '+obdobi+' pro: '+to.join(', ')+' ?\n(Vygeneruje PDF, stáhne ZIP a otevře tvůj e‑mail — přílohu přidáš.)');
+ if(!confirm(confMsg))return;
  pdfOverlay('Generuji PDF…');setSync('busy','Generuji PDF…');
  try{
   const attachments=[];const rows=[];const plain=[];let i=0;
@@ -866,13 +884,12 @@ async function sendToAccountant(){
    try{res=genForDriver(nm,NAST.ridici[nm],y,m,ov,SZ,seedFor(nm,mk));}catch(e){continue;}
    const blob=await genPdfBlob(nm,res,obdobi);
    attachments.push({filename:'Cestovni_prikaz_'+nm.replace(/\s+/g,'_')+'_'+mk+'.pdf',content:await blobToB64(blob)});
-   rows.push('<li>'+nm+' — '+kc(res.celkem)+' Kč</li>');plain.push(nm+': '+kc(res.celkem)+' Kč');}
+   rows.push('<li>'+escapeHtml(nm)+' — '+kc(res.celkem)+' Kč</li>');plain.push(nm+': '+kc(res.celkem)+' Kč');}
   if(!attachments.length){setSync('err','Chyba');toast('Nic k odeslání (doplň cíle/částky).');return;}
-  const backend=(window.__SB&&window.__SB.sendMode)||((window.__SB&&window.__SB.n8nMail)?'n8n':'');
   if(backend==='edge'||backend==='n8n'){
    pdfOverlay('Odesílám e‑mail…');setSync('busy','Odesílám…');
    const session=(await sb.auth.getSession()).data.session;const utok=session&&session.access_token;
-   const html='<p>Dobrý den,</p><p>v příloze cestovní příkazy za <b>'+obdobi+'</b>:</p><ul>'+rows.join('')+'</ul><p>S pozdravem,<br>'+NAST.firma+'</p>';
+   const html='<p>Dobrý den,</p><p>v příloze cestovní příkazy za <b>'+escapeHtml(obdobi)+'</b>:</p><ul>'+rows.join('')+'</ul><p>S pozdravem,<br>'+escapeHtml(NAST.firma||'')+'</p>';
    const from=NAST.email_from||'Cestovní příkazy <cestovni-prikazy@sintera.cz>';
    const target=backend==='edge'?(window.__SB.url+'/functions/v1/send-prikazy'):window.__SB.n8nMail;
    const headers={'Authorization':'Bearer '+utok,'Content-Type':'application/json'};

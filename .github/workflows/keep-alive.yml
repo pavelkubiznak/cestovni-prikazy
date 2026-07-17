@@ -1,0 +1,49 @@
+name: keep-alive
+
+# Udržuje Supabase free-tarif databázi aktivní, aby se neuspávala.
+# Supabase uspí projekt po 7 dnech nečinnosti; stačí občasný dotaz.
+# Běží 2× týdně (Po + Čt) → maximální mezera 3–4 dny, bezpečně pod 7 dní.
+
+on:
+  schedule:
+    - cron: '23 7 * * 1,4'   # pondělí a čtvrtek 07:23 UTC
+  workflow_dispatch:          # umožní ruční spuštění tlačítkem "Run workflow"
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ping Supabase (udrží databázi aktivní)
+        run: |
+          code=$(curl -sS -m 30 -o /dev/null -w "%{http_code}" \
+            "https://tgwlzmrdirqrqtqgprod.supabase.co/rest/v1/cp_shared?select=id&limit=1" \
+            -H "apikey: sb_publishable_JqSGar-QkP6OC02bkZNQNw_1b0B1wpo")
+          echo "Supabase ping: HTTP $code"
+          case "$code" in
+            200|401|403) echo "OK — databáze odpověděla (počítá se jako aktivita)";;
+            *) echo "::warning::Neočekávaný stav HTTP $code";;
+          esac
+
+      - name: Heartbeat (jen občas — udrží i tento GitHub cron naživu >60 dní)
+        run: |
+          last=$(git log -1 --format=%ct 2>/dev/null || echo 0)
+          days=$(( ( $(date +%s) - last ) / 86400 ))
+          echo "Poslední commit v repu byl před $days dny."
+          if [ "$days" -ge 50 ]; then
+            date -u +%FT%TZ > .github/last-keepalive.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/last-keepalive.txt
+            git commit -m "keepalive heartbeat [skip ci]"
+            git push
+            echo "Heartbeat commit vytvořen (repo bylo dlouho nečinné)."
+          else
+            echo "Heartbeat není potřeba — repo je aktivní."
+          fi

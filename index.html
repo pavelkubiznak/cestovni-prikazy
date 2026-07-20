@@ -343,6 +343,11 @@ const VYHLASKA={2026:"č. 573/2025 Sb."};
 // Tuzemské stravné (vyhl. 573/2025 Sb.). Default = zákonné minimum pro soukromou sféru; max osvobozené = 185/284/442.
 const STRAVNE={2026:{p1:155,p2:236,p3:370}};
 function stravneKc(hodiny,year){const s=STRAVNE[year]||STRAVNE[Object.keys(STRAVNE)[0]];if(!s||hodiny<5)return 0;if(hodiny<=12)return s.p1;if(hodiny<=18)return s.p2;return s.p3;}
+// Pásmo stravného: 1 = 5–12 h, 2 = 12–18 h, 3 = 18+ h. loR/hiR = rozsah pro NÁHODNÉ trvání cesty (aby nebyly všechny stejné).
+function stravBand(pasmo){pasmo=+pasmo;return pasmo===1?{key:'p1',loR:5.25,hiR:11.75,txt:'5–12 h'}:pasmo===2?{key:'p2',loR:12.75,hiR:17.75,txt:'12–18 h'}:pasmo===3?{key:'p3',loR:18.75,hiR:21.75,txt:'18+ h'}:null;}
+function stravneForBand(pasmo,year){const s=STRAVNE[year]||STRAVNE[Object.keys(STRAVNE)[0]];const b=stravBand(pasmo);return (s&&b)?s[b.key]:0;}
+function pasmoOf(d){d=d||{};return (+d.stravne_pasmo)||(d.delka_h>=18?3:d.delka_h>=12?2:d.delka_h>=5?1:0);}   // pásmo řidiče (+ fallback ze starého delka_h)
+function stravRates(){return STRAVNE[Object.keys(STRAVNE)[0]];}
 function strHash(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
 function shuffle(arr,rng){for(let i=arr.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}return arr;}
@@ -378,11 +383,11 @@ function genForDriver(name,base,y,m,override,sazby,seedOverride){
   const od=+d.castka_od||0,doo=+d.castka_do||0;
   const rate=rateOf(d,sazby);
   const pocet=Math.max(1,Math.min(6,parseInt(d.pocet_jizd,10)||1));
-  // Stravné: cílová délka cesty (h). Když je zadaná, každá cesta se protáhne (delší doba na místě) aspoň na tolik hodin
-  // a stravné se dopočítá + PŘIČTE k vyplacené částce. Interval castka_od..castka_do pak míří na CELKEM (jízdné + stravné).
-  const delkaH=+d.delka_h||0;
-  const targetMin=delkaH>0?Math.round(delkaH*60):0;
-  const stravnePerTrip=delkaH>0?stravneKc(delkaH,y):0;
+  // Stravné: řidič má vybrané PÁSMO (5–12 / 12–18 / 18+ h). Každá cesta pak trvá NÁHODNĚ v rámci pásma
+  // (řízení dle km, zbytek doba na místě) a stravné se přičte k vyplacené částce. Interval míří na CELKEM.
+  const pasmo=pasmoOf(d);
+  const band=stravBand(pasmo);
+  const stravnePerTrip=stravneForBand(pasmo,y);
   const stravneEst=stravnePerTrip*pocet;                                  // odhad stravného pro dopočet jízdného
   const odJ=Math.max(0,od-stravneEst),dooJ=Math.max(0,doo-stravneEst);    // cílové jízdné = celkem − stravné
   const lo=Math.ceil(odJ/(2*rate)),hi=Math.floor(dooJ/(2*rate));
@@ -394,8 +399,10 @@ function genForDriver(name,base,y,m,override,sazby,seedOverride){
   const baseCount=datumy.length;let pi=0;
   while(datumy.length<vyb.length){datumy.push(baseCount>0?new Date(datumy[pi++%baseCount]):new Date(y,m-1,15));}
   datumy.sort((a,b)=>a-b);
-  const trips=vyb.map((it,i)=>{const km=it[1];const tt=timesFor(km,d.rychlost||80,rng,targetMin);const dt=datumy[i];
-    const trvani=tt[4]||0;const strav=delkaH>0?stravneKc(trvani/60,y):0;
+  const trips=vyb.map((it,i)=>{const km=it[1];
+    const targetMin=band?Math.round((band.loR+rng()*(band.hiR-band.loR))*60/15)*15:0;  // náhodné trvání v pásmu, zaokr. na 15 min
+    const tt=timesFor(km,d.rychlost||80,rng,targetMin);const dt=datumy[i];
+    const trvani=tt[4]||0;const strav=pasmo>0?stravneKc(trvani/60,y):0;
     return {datum:`${dt.getDate()}. ${dt.getMonth()+1}. ${dt.getFullYear()}`,dest:it[0],km:km,odj:tt[0],prij:tt[1],odj2:tt[2],prij2:tt[3],trvaniMin:trvani,stravne:strav};});
   const celkem_km=trips.reduce((a,t)=>a+t.km*2,0);
   const jizdne=Math.round(trips.reduce((a,t)=>a+Math.round(t.km*rate*100)/100*2,0)*100)/100;
@@ -411,7 +418,7 @@ function genForDriver(name,base,y,m,override,sazby,seedOverride){
     mimoInterval=celkem<od-0.5||celkem>doo+0.5;
     if(mimoInterval)for(let k=1;k<=kmAll.length;k++){const st=stravnePerTrip*k;if(sumHi(k)*2*rate+st>=od&&sumLo(k)*2*rate+st<=doo){pocetDoporuceny=k;break;}}
   }
-  return {d,rate,trips,celkem_km,celkem,jizdne,stravne_celkem,delkaH,stravnePerTrip,avg:avgSpotreba(d),cena:sazby[d.palivo||"natural95"],mimoInterval,castkaMin,castkaMax,pocetDoporuceny};
+  return {d,rate,trips,celkem_km,celkem,jizdne,stravne_celkem,pasmo,pasmoText:band?band.txt:'',stravnePerTrip,avg:avgSpotreba(d),cena:sazby[d.palivo||"natural95"],mimoInterval,castkaMin,castkaMax,pocetDoporuceny};
 }
 function kc(x){return x.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g," ").replace(".",",");}
 function kc0(x){return Math.round(x||0).toLocaleString("cs-CZ");}
@@ -448,7 +455,7 @@ function a4Html(firma,name,res,obdobi,ucel,pracDoba,zakladni){
   <table class="vy" style="margin-top:6px"><thead><tr><th style="width:8%">Datum</th><th style="width:7%">Odjezd /<br>příjezd</th><th style="width:20%">Místo</th><th style="width:6%">v hod.</th><th style="width:8%">Použitý<br>doprav.</th><th style="width:8%">Vzdál.<br>km</th><th style="width:9%">Poč./konec<br>výkonu</th><th style="width:9%">Jízdné Kč</th><th style="width:6%">Stravné</th><th style="width:7%">Nutné výd.</th><th style="width:9%">Celkem Kč</th><th style="width:6%">Uprav.</th></tr></thead><tbody>${rows}
   <tr><td></td><td class="c"><b>Celkem km</b></td><td></td><td></td><td></td><td class="r"><b>${res.celkem_km}</b></td><td></td><td class="r"><b>${kc(res.jizdne)}</b></td><td class="r"><b>${res.stravne_celkem?kc(res.stravne_celkem):'0'}</b></td><td class="r">0</td><td class="r"><b>${kc(res.celkem)}</b></td><td></td></tr></tbody></table>
   <div class="totline" style="margin-top:8px"><span>Celkem k proplacení:</span> <b>${kc(res.celkem)} Kč</b></div>
-  <div class="note2">Vozidlo: ${escapeHtml(d.auto||"")} | SPZ ${escapeHtml(d.spz||"")} | náhrada ${kc(rate)} Kč/km (základní ${kc(zakladni)} Kč/km + spotřeba ${res.avg.toFixed(2)} l/100 km × ${kc(res.cena)} Kč/l, ${palivo}, vyhláška ${vyhl}).${res.stravne_celkem?` Stravné ${kc(res.stravnePerTrip)} Kč × ${res.trips.length} cest (každá cesta ≥ ${res.delkaH} h), celkem jízdné ${kc(res.jizdne)} + stravné ${kc(res.stravne_celkem)} Kč.`:''}</div>
+  <div class="note2">Vozidlo: ${escapeHtml(d.auto||"")} | SPZ ${escapeHtml(d.spz||"")} | náhrada ${kc(rate)} Kč/km (základní ${kc(zakladni)} Kč/km + spotřeba ${res.avg.toFixed(2)} l/100 km × ${kc(res.cena)} Kč/l, ${palivo}, vyhláška ${vyhl}).${res.stravne_celkem?` Stravné ${kc(res.stravnePerTrip)} Kč × ${res.trips.length} cest (pásmo ${res.pasmoText}), celkem jízdné ${kc(res.jizdne)} + stravné ${kc(res.stravne_celkem)} Kč.`:''}</div>
   <div class="sign" style="margin-top:26px"><div></div><div>Datum a podpis pracovníka</div><div></div></div>
   </div>`;
 }
@@ -490,7 +497,12 @@ function ridCards(){const ent=Object.entries(NAST.ridici);
      <div class="fld"><label>Částka od</label><input type="number" class="w-md" value="${d.castka_od}" oninput="setv('${encodeURIComponent(nm)}','castka_od',+this.value)"></div>
      <div class="fld"><label>Částka do</label><input type="number" class="w-md" value="${d.castka_do}" oninput="setv('${encodeURIComponent(nm)}','castka_do',+this.value)"></div>
      <div class="fld"><label>Rychlost km/h</label><input type="number" class="w-xs" value="${d.rychlost||80}" oninput="setv('${encodeURIComponent(nm)}','rychlost',+this.value)"></div>
-     <div class="fld"><label>Délka cesty (h) — stravné</label><input type="number" step="0.5" min="0" class="w-xs" value="${d.delka_h||''}" placeholder="—" oninput="setv('${encodeURIComponent(nm)}','delka_h',+this.value)" title="Jak dlouho má cesta trvat (řízení tam + pobyt na místě + zpět). Prázdné/0 = bez stravného. Aspoň 5 h = nárok na stravné, které se přičte k částce."></div>
+     <div class="fld"><label>Stravné (délka cesty)</label><select class="w-lg" onchange="setv('${encodeURIComponent(nm)}','stravne_pasmo',+this.value)" title="Pásmo stravného. Každá cesta pak trvá NÁHODNĚ v rámci pásma (řízení dle km, zbytek doba na místě). Stravné se přičte k částce.">
+       <option value="0" ${!pasmoOf(d)?'selected':''}>Bez stravného</option>
+       <option value="1" ${pasmoOf(d)===1?'selected':''}>5–12 h (${stravRates().p1} Kč)</option>
+       <option value="2" ${pasmoOf(d)===2?'selected':''}>12–18 h (${stravRates().p2} Kč)</option>
+       <option value="3" ${pasmoOf(d)===3?'selected':''}>18+ h (${stravRates().p3} Kč)</option>
+     </select></div>
    </div>
    <details class="adv"><summary>Cíle a vzdálenosti (km)</summary>
      <p class="small muted" style="margin:6px 0">Jeden cíl na řádek: <b>Cíl;km</b> (jednosměrně z výchozího bodu).</p>
@@ -504,7 +516,7 @@ function setv(nm,k,v){nm=dec(nm);NAST.ridici[nm][k]=v;scheduleSave();}
 function setsp(nm,k,v){nm=dec(nm);NAST.ridici[nm].spotreba[k]=parseFloat(v)||0;rate1(nm);scheduleSave();}
 function setcile(nm,txt){nm=dec(nm);const o={};txt.split(/\n/).forEach(l=>{const m=l.split(';');const km=parseInt(m[1],10);if(m[0]&&m[0].trim()&&Number.isFinite(km)&&km>0)o[m[0].trim()]=km;});NAST.ridici[nm].cile=o;scheduleSave();}
 function addRidic(){let i=1,nm='Nový řidič';while(NAST.ridici[nm]){i++;nm='Nový řidič '+i;}
- NAST.ridici[nm]={bydliste:'',auto:'',spz:'',palivo:'natural95',spotreba:{mesto:7.5,mimo:5.5,kombi:6.5},vychozi_bod:'',navratovy_bod:'',pocet_jizd:3,castka_od:4000,castka_do:5000,rychlost:80,delka_h:0,cile:{}};
+ NAST.ridici[nm]={bydliste:'',auto:'',spz:'',palivo:'natural95',spotreba:{mesto:7.5,mimo:5.5,kombi:6.5},vychozi_bod:'',navratovy_bod:'',pocet_jizd:3,castka_od:4000,castka_do:5000,rychlost:80,stravne_pasmo:0,cile:{}};
  ridCards();fillDrivers();updChip();scheduleSave();toast('Řidič přidán.');}
 function delRidic(nm){nm=dec(nm);if(!confirm('Smazat řidiče „'+nm+'“?'))return;delete NAST.ridici[nm];ridCards();fillDrivers();genCards();updChip();scheduleSave();toast('Řidič smazán.');}
 function renameRidic(oldNm,newNm){oldNm=dec(oldNm);newNm=(newNm||'').trim();if(!newNm||newNm===oldNm){return;}
@@ -884,7 +896,7 @@ function pdfDocDef(firma,name,res,obdobi,ucel,pracDoba,zakladni,signMode){
    field('Zaměstnanec:',name+'          období: '+obdobi,true),
    {table:{headerRows:1,widths:[40,28,80,28,26,32,42,44,30,32,46,22],body:vyBody},layout:'grid',margin:[0,4,0,0]},
    {columns:[{text:'',width:'*'},{text:[{text:'Celkem k proplacení:  '},{text:kc(res.celkem)+' Kč',bold:true,fontSize:10}],width:'auto'}],margin:[0,6,0,0]},
-   {text:'Vozidlo: '+(d.auto||'')+' | SPZ '+(d.spz||'')+' | náhrada '+kc(rate)+' Kč/km (základní '+kc(zakladni)+' Kč/km + spotřeba '+res.avg.toFixed(2)+' l/100 km × '+kc(res.cena)+' Kč/l, '+palivo+', vyhláška '+vyhl+').'+(res.stravne_celkem?' Stravné '+kc(res.stravnePerTrip)+' Kč × '+res.trips.length+' cest (každá ≥ '+res.delkaH+' h); jízdné '+kc(res.jizdne)+' + stravné '+kc(res.stravne_celkem)+' Kč.':''),fontSize:7,color:'#333',margin:[0,4,0,0]},
+   {text:'Vozidlo: '+(d.auto||'')+' | SPZ '+(d.spz||'')+' | náhrada '+kc(rate)+' Kč/km (základní '+kc(zakladni)+' Kč/km + spotřeba '+res.avg.toFixed(2)+' l/100 km × '+kc(res.cena)+' Kč/l, '+palivo+', vyhláška '+vyhl+').'+(res.stravne_celkem?' Stravné '+kc(res.stravnePerTrip)+' Kč × '+res.trips.length+' cest (pásmo '+res.pasmoText+'); jízdné '+kc(res.jizdne)+' + stravné '+kc(res.stravne_celkem)+' Kč.':''),fontSize:7,color:'#333',margin:[0,4,0,0]},
    signMode
     ? {columns:[
         {stack:[{text:'[s:Signer1:sigdrv____________]',fontSize:11,noWrap:true},{text:'Řidič (zaměstnanec) — datum a podpis',fontSize:7.5,alignment:'center',margin:[0,3,0,0]}],alignment:'center'},

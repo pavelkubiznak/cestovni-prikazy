@@ -1,12 +1,15 @@
 name: keep-alive
 
-# Udržuje Supabase free-tarif databázi aktivní, aby se neuspávala.
-# Supabase uspí projekt po 7 dnech nečinnosti; stačí občasný dotaz.
-# Běží 2× týdně (Po + Čt) → maximální mezera 3–4 dny, bezpečně pod 7 dní.
+# Udržuje Supabase free-tarif databázi aktivní a HLÍDÁ, jestli je vůbec dostupná.
+#
+# POUČENÍ Z 3. 8. 2026: projekt se uspal, i když tenhle ping 23. i 27. 7. vracel HTTP 200
+# — čtecí dotaz se Supabase jako „aktivita" spolehlivě nepočítá. Proto pingujeme DENNĚ
+# a při nedostupnosti workflow SELŽE (GitHub pošle e-mail). Hlavní pojistkou je ale
+# denní záloha dat na Drive (server sintera-radar), ne tenhle workflow.
 
 on:
   schedule:
-    - cron: '23 7 * * 1,4'   # pondělí a čtvrtek 07:23 UTC
+    - cron: '23 7 * * *'     # každý den 07:23 UTC
   workflow_dispatch:          # umožní ruční spuštění tlačítkem "Run workflow"
 
 permissions:
@@ -20,15 +23,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ping Supabase (udrží databázi aktivní)
+      - name: Ping Supabase (udrží databázi aktivní + ověří dostupnost)
         run: |
           code=$(curl -sS -m 30 -o /dev/null -w "%{http_code}" \
             "https://tgwlzmrdirqrqtqgprod.supabase.co/rest/v1/cp_shared?select=id&limit=1" \
-            -H "apikey: sb_publishable_JqSGar-QkP6OC02bkZNQNw_1b0B1wpo")
+            -H "apikey: sb_publishable_JqSGar-QkP6OC02bkZNQNw_1b0B1wpo" || echo "000")
           echo "Supabase ping: HTTP $code"
           case "$code" in
-            200|401|403) echo "OK — databáze odpověděla (počítá se jako aktivita)";;
-            *) echo "::warning::Neočekávaný stav HTTP $code";;
+            200|401|403)
+              echo "OK — databáze odpověděla." ;;
+            000)
+              echo "::error::Databáze NEODPOVÍDÁ (host se nepřeložil) — projekt je nejspíš POZASTAVENÝ."
+              echo "Obnova: Supabase dashboard → org 'Cestovni prikazy' → projekt cestovni-prikazy → Resume project (trvá ~1 min)."
+              exit 1 ;;
+            *)
+              echo "::error::Neočekávaný stav HTTP $code — zkontroluj projekt v Supabase dashboardu."
+              exit 1 ;;
           esac
 
       - name: Heartbeat (jen občas — udrží i tento GitHub cron naživu >60 dní)

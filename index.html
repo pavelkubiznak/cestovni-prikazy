@@ -218,7 +218,7 @@ body.previewing #printRoot{position:absolute;left:0;top:0;width:100%;max-width:n
 
 <div class="wrap">
 <div class="tabs" role="tablist">
-  <button id="tGen" class="act" onclick="tab('Gen')">Generovat</button>
+  <button id="tGen" class="act" onclick="tabGen()">Generovat</button>
   <button id="tRid" onclick="tab('Rid')">Řidiči</button>
   <button id="tVyj" onclick="tab('Vyj')">Výjimky</button>
   <button id="tDor" onclick="tab('Dor')">Doručení</button>
@@ -464,6 +464,12 @@ function toast(m){const t=document.getElementById('toast');t.textContent=m;t.cla
 function initials(n){return n.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();}
 function avc(n){return AV[strHash(n)%AV.length];}
 function tab(t){['Gen','Rid','Vyj','Dor','Hist'].forEach(x=>{document.getElementById('v'+x).style.display=(x===t?'':'none');document.getElementById('t'+x).classList.toggle('act',x===t);});}
+// Klik na „Generovat“: v zjednodušeném režimu je to jediná záložka, takže přepnutí nic
+// neudělá → tlačítko vypadalo nefunkčně. Nově vždy PŘEPOČÍTÁ příkazy a potvrdí to hláškou.
+function tabGen(){tab('Gen');
+ try{genCards();}catch(e){toast('Nepodařilo se přegenerovat — zkontroluj nastavení řidičů.');return;}
+ const mk=curMonth()||'';const p=mk.split('-');
+ toast(p.length===2?('Příkazy za '+MESICE[+p[1]]+' '+p[0]+' přepočítány.'):'Příkazy přepočítány.');}
 
 function ridCards(){const ent=Object.entries(NAST.ridici);
  if(!ent.length){document.getElementById('ridCards').innerHTML='<div class="empty">Zatím žádní řidiči. Přidej prvního tlačítkem výše, nebo naimportuj zálohu dole.</div>';return;}
@@ -1002,8 +1008,15 @@ async function init(){
   document.getElementById('authSubmit').disabled=true;return;}
  sb=window.supabase.createClient(window.__SB.url,window.__SB.anon);
  sb.auth.onAuthStateChange((ev,session)=>applySession(session,ev));
- const{data}=await sb.auth.getSession();
- applySession(data.session);
+ try{
+  const{data}=await sb.auth.getSession();
+  applySession(data.session);
+ }catch(e){
+  // Databáze nedostupná (výpadek / uspaný Supabase projekt) → NIKDY nenechat bílou stránku.
+  document.getElementById('authGate').style.display='flex';
+  authMsg('Nepodařilo se spojit s databází. Zkus to prosím za chvíli — pokud potíže trvají, může být projekt Supabase pozastavený (obnoví se v dashboardu tlačítkem Resume).','err');
+  const b=document.getElementById('authSubmit');if(b)b.disabled=true;
+ }
 }
 init();
 </script></body></html>
